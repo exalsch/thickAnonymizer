@@ -1,3 +1,5 @@
+import re as _re
+
 from presidio_analyzer import Pattern, PatternRecognizer, EntityRecognizer, RecognizerResult
 
 _IPV4 = r"\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b"
@@ -30,9 +32,8 @@ class CreditCardRecognizer(EntityRecognizer):
         pass
 
     def analyze(self, text, entities, nlp_artifacts=None):
-        import re
         results = []
-        for m in re.finditer(self.PATTERN, text):
+        for m in _re.finditer(self.PATTERN, text):
             candidate = m.group()
             if _luhn_ok(candidate):
                 results.append(
@@ -64,3 +65,27 @@ def custom_recognizers() -> list:
         ),
         CreditCardRecognizer(),
     ]
+
+
+def deny_list_recognizer(terms: list[str]) -> "EntityRecognizer":
+    class _DenyRecognizer(EntityRecognizer):
+        def __init__(self, terms):
+            super().__init__(supported_entities=["DENY"], name="DenyListRecognizer")
+            cleaned = [t for t in terms if t.strip()]
+            self._regex = (
+                _re.compile("|".join(_re.escape(t) for t in cleaned), _re.IGNORECASE)
+                if cleaned else None
+            )
+
+        def load(self):
+            pass
+
+        def analyze(self, text, entities, nlp_artifacts=None):
+            if self._regex is None:
+                return []
+            return [
+                RecognizerResult("DENY", m.start(), m.end(), 1.0)
+                for m in self._regex.finditer(text)
+            ]
+
+    return _DenyRecognizer(terms)
