@@ -1,0 +1,11 @@
+presidio-analyzer
+presidio-anonymizer
+python-docx
+openpyxl
+python-pptx
+cryptography
+pywebview
+
+[dev]
+pytest
+pyinstaller

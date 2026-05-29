@@ -1,0 +1,14 @@
+Metadata-Version: 2.4
+Name: thickanon
+Version: 0.1.0
+Requires-Python: >=3.11
+Requires-Dist: presidio-analyzer
+Requires-Dist: presidio-anonymizer
+Requires-Dist: python-docx
+Requires-Dist: openpyxl
+Requires-Dist: python-pptx
+Requires-Dist: cryptography
+Requires-Dist: pywebview
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: pyinstaller; extra == "dev"

@@ -1,0 +1,9 @@
+pyproject.toml
+src/thickanon/__init__.py
+src/thickanon.egg-info/PKG-INFO
+src/thickanon.egg-info/SOURCES.txt
+src/thickanon.egg-info/dependency_links.txt
+src/thickanon.egg-info/entry_points.txt
+src/thickanon.egg-info/requires.txt
+src/thickanon.egg-info/top_level.txt
+tests/test_smoke.py
