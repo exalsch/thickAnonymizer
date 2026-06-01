@@ -6,7 +6,13 @@
 #   - `thickAnonymizer.exe anonymize ...` / `anon ...` etc. -> CLI
 # Built as a console-subsystem exe so CLI stdio, piping and exit codes work;
 # the GUI path hides the console window (see thickanon/__main__.py).
+import os
 from PyInstaller.utils.hooks import collect_all, collect_submodules
+
+# Paths in a .spec are resolved relative to the spec file's directory, so anchor
+# everything to the project root (the parent of packaging/) via SPECPATH.
+ROOT = os.path.dirname(os.path.abspath(SPECPATH))
+SRC = os.path.join(ROOT, "src")
 
 datas, binaries, hiddenimports = [], [], []
 for pkg in ["en_core_web_lg", "presidio_analyzer", "presidio_anonymizer"]:
@@ -17,9 +23,9 @@ for pkg in ["en_core_web_lg", "presidio_analyzer", "presidio_anonymizer"]:
 hiddenimports += collect_submodules("thickanon")
 
 # bundle the web UI
-datas += [("src/thickanon/ui/web/index.html", "thickanon/ui/web")]
+datas += [(os.path.join(SRC, "thickanon/ui/web/index.html"), "thickanon/ui/web")]
 
-a = Analysis(["src/thickanon/__main__.py"], pathex=["src"], datas=datas,
+a = Analysis([os.path.join(SRC, "thickanon/__main__.py")], pathex=[SRC], datas=datas,
              binaries=binaries, hiddenimports=hiddenimports)
 pyz = PYZ(a.pure)
 exe = EXE(pyz, a.scripts, a.binaries, a.datas, name="thickAnonymizer",
