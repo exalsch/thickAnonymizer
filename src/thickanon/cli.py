@@ -3,7 +3,11 @@ import sys
 from pathlib import Path
 from thickanon.core.types import AnonymizeConfig, ReviewMode
 from thickanon.core.mapping import MappingStore
-from thickanon.core.orchestrator import anonymize_paths, deanonymize_paths
+from thickanon.core.orchestrator import (
+    anonymize_paths,
+    deanonymize_paths,
+    ensure_mapping_outside_root,
+)
 
 
 def _expand(paths) -> list[Path]:
@@ -40,6 +44,11 @@ def main(argv=None) -> int:
     ns = parser.parse_args(argv)
 
     if ns.action == "anonymize":
+        try:
+            ensure_mapping_outside_root(ns.mapping, ns.root)
+        except ValueError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 2
         cfg = AnonymizeConfig(mode=ReviewMode(ns.mode), deny_list=ns.deny)
         mapping = MappingStore()
         report = anonymize_paths(_expand(ns.paths), Path(ns.root), mapping, cfg,

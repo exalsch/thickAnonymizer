@@ -1,7 +1,12 @@
 from pathlib import Path
 from thickanon.core.types import AnonymizeConfig, ReviewMode
 from thickanon.core.mapping import MappingStore
-from thickanon.core.orchestrator import anonymize_paths, deanonymize_paths
+import pytest
+from thickanon.core.orchestrator import (
+    anonymize_paths,
+    deanonymize_paths,
+    ensure_mapping_outside_root,
+)
 
 
 def test_anonymize_then_deanonymize_roundtrip(tmp_path):
@@ -34,6 +39,27 @@ def test_backup_created_when_requested(tmp_path):
     anonymize_paths([f], tmp_path, MappingStore(),
                     AnonymizeConfig(mode=ReviewMode.AUTO_REDACT), backup_root=backup_root)
     assert (backup_root / "a.txt").read_text(encoding="utf-8") == "John here"
+
+
+def test_mapping_inside_root_rejected(tmp_path):
+    root = tmp_path / "data"; root.mkdir()
+    # directly inside root
+    with pytest.raises(ValueError):
+        ensure_mapping_outside_root(root / "map.json", root)
+    # nested inside root
+    (root / "sub").mkdir()
+    with pytest.raises(ValueError):
+        ensure_mapping_outside_root(root / "sub" / "map.json", root)
+    # the root path itself
+    with pytest.raises(ValueError):
+        ensure_mapping_outside_root(root, root)
+
+
+def test_mapping_outside_root_allowed(tmp_path):
+    root = tmp_path / "data"; root.mkdir()
+    # sibling directory — must not raise
+    ensure_mapping_outside_root(tmp_path / "map.json", root)
+    ensure_mapping_outside_root(tmp_path / "keys" / "map.json", root)
 
 
 def test_failing_file_is_recorded_and_batch_continues(tmp_path, monkeypatch):

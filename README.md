@@ -8,8 +8,15 @@ before using them with AI tools, then de-anonymize the AI's output back.
     python -m spacy download en_core_web_lg
 
 ## CLI
-    thickanon anonymize C:\data --root C:\data --mapping C:\data\map.json --mode quick_review
-    thickanon deanonymize C:\data --mapping C:\data\map.json
+    thickanon anonymize C:\data --root C:\data --mapping C:\keys\map.json --mode quick_review
+    thickanon deanonymize C:\data --mapping C:\keys\map.json
+
+`anon` / `deanon` are accepted as short aliases for `anonymize` / `deanonymize`.
+
+> **Rule:** the `--mapping` file MUST live OUTSIDE the `--root` folder. The mapping
+> is the reversible key; if it sat inside the folder you anonymize and share, it
+> would leak alongside the files and let anyone fully de-anonymize them. The tool
+> refuses to run if the mapping path is inside root.
 
 ## Desktop app
     python -m thickanon.ui.app

@@ -1,13 +1,18 @@
 from pathlib import Path
 from thickanon.core.types import AnonymizeConfig, ReviewMode
 from thickanon.core.mapping import MappingStore
-from thickanon.core.orchestrator import anonymize_paths, deanonymize_paths
+from thickanon.core.orchestrator import (
+    anonymize_paths,
+    deanonymize_paths,
+    ensure_mapping_outside_root,
+)
 from thickanon.cli import _expand
 
 
 class Api:
     def anonymize(self, files, root, mapping_path, mode, deny, backup_dir, passphrase):
         try:
+            ensure_mapping_outside_root(mapping_path, root)
             cfg = AnonymizeConfig(mode=ReviewMode(mode), deny_list=deny or [])
             mapping = MappingStore()
             report = anonymize_paths(

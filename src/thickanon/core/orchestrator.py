@@ -11,6 +11,23 @@ from thickanon.detectors.engine import detect
 from thickanon.io.registry import get_handler, UnsupportedFileType
 
 
+def ensure_mapping_outside_root(mapping_path, root) -> None:
+    """Guard: the mapping file (the reversible key) must live OUTSIDE the root
+    folder being anonymized.
+
+    If it sat inside root it could be anonymized itself, and — worse — it would
+    be shared alongside the anonymized files, handing a recipient everything
+    needed to fully de-anonymize them. Raises ValueError on violation.
+    """
+    mp = Path(mapping_path).resolve()
+    rt = Path(root).resolve()
+    if mp == rt or rt in mp.parents:
+        raise ValueError(
+            f"mapping file must be outside the root folder: {mp} is inside {rt}. "
+            "Choose a mapping path in a different directory."
+        )
+
+
 def anonymize_paths(paths, root, mapping: MappingStore, config: AnonymizeConfig,
                     backup_root=None, review_callback=None) -> BatchReport:
     """Anonymize files in place.
