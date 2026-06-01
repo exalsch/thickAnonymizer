@@ -25,8 +25,17 @@ hiddenimports += collect_submodules("thickanon")
 # bundle the web UI
 datas += [(os.path.join(SRC, "thickanon/ui/web/index.html"), "thickanon/ui/web")]
 
+# torch is present in the dev env (so thinc auto-registers it), but the
+# en_core_web_lg CNN pipeline runs on thinc/numpy and does not need it for
+# inference. Excluding the torch + CUDA stack drops ~2GB; thinc falls back
+# cleanly when torch is unimportable.
+_EXCLUDES = [
+    "torch", "torchvision", "torchaudio", "torchgen", "functorch",
+    "nvidia", "triton", "transformers",
+]
+
 a = Analysis([os.path.join(SRC, "thickanon/__main__.py")], pathex=[SRC], datas=datas,
-             binaries=binaries, hiddenimports=hiddenimports)
+             binaries=binaries, hiddenimports=hiddenimports, excludes=_EXCLUDES)
 pyz = PYZ(a.pure)
 exe = EXE(pyz, a.scripts, a.binaries, a.datas, name="thickAnonymizer",
           console=True)

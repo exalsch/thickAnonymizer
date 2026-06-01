@@ -45,6 +45,11 @@ The spaCy model and web UI are bundled inside the exe; no Python install is need
 target machine. (In a dev checkout, `thickanon` is the console-script entry point and
 `python -m thickanon` behaves identically to the exe.)
 
+The build excludes the PyTorch/CUDA stack: the `en_core_web_lg` pipeline is a CNN model
+that runs on thinc/numpy, so torch is unused for inference and dropping it takes the exe
+from ~3.1 GB to ~580 MB. (If you later add a transformer-based spaCy model or an on-device
+LLM detector, you'll need to remove the relevant entries from `_EXCLUDES` in the spec.)
+
 ## Known limitations
 
 - **Residual leaks are REPORTED, not blocked:** in `auto_skip` mode and in non-interactive `quick_review`, the output file may still contain low-confidence PII. Check the report's "RESIDUAL LEAKS FLAGGED" count before sharing.
