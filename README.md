@@ -26,15 +26,24 @@ Drag files or a folder onto the window (or use **Browse files… / Browse folder
 to a path *beside* the root (never inside it). Use **Choose…** to pick a mapping path
 yourself.
 
-## Build a Windows .exe
+## Build a Windows .exe (single hybrid binary)
     pyinstaller packaging/thickanon.spec
     # dist/thickAnonymizer.exe
 
-The exe **is** the desktop app: its entry point is `thickanon/ui/app.py` built with
-`console=False`, so **double-clicking `dist/thickAnonymizer.exe` opens the GUI window
-directly** — no terminal, no Python install needed on the target machine. The spaCy
-model and web UI are bundled inside the exe. (The CLI is the dev/console entry point
-`thickanon`; the packaged exe ships the GUI.)
+One exe does **both** roles, dispatching on its arguments (`thickanon/__main__.py`):
+
+- **Double-click** (no arguments) → opens the desktop **GUI**. The exe is a console
+  binary, so a console window flashes for a fraction of a second and is then hidden;
+  only the app window remains.
+- **From a terminal** with arguments → runs the **CLI**, e.g.
+  `thickAnonymizer.exe anon C:\data --root C:\data --mapping C:\keys\map.json --mode auto_redact`.
+  Because it is built as a console-subsystem exe, the shell waits for it, stdout/stderr
+  pipe and redirect normally, and the exit code propagates — so it scripts like a normal
+  CLI tool.
+
+The spaCy model and web UI are bundled inside the exe; no Python install is needed on the
+target machine. (In a dev checkout, `thickanon` is the console-script entry point and
+`python -m thickanon` behaves identically to the exe.)
 
 ## Known limitations
 
