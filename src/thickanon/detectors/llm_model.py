@@ -1,5 +1,6 @@
 import hashlib
 import urllib.request
+import warnings
 from pathlib import Path
 
 
@@ -25,6 +26,12 @@ def ensure_model(llm_config) -> Path:
             return dest  # cached and valid (or verification disabled)
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_suffix(dest.suffix + ".part")
+    if not want:
+        warnings.warn(
+            "downloading model without sha256 verification "
+            f"({llm_config.model_url}); pin LLMConfig.sha256 to verify integrity",
+            stacklevel=2,
+        )
     urllib.request.urlretrieve(llm_config.model_url, tmp)  # noqa: S310 (local/trusted URL)
     if want and _sha256(tmp) != want:
         tmp.unlink(missing_ok=True)
@@ -41,9 +48,24 @@ string ::= "\"" ([^"\\] | "\\" .)* "\""
 ws     ::= [ \t\n]*
 '''
 
+_runner_cache = {}
+
+
+def _runner_key(llm_config):
+    return (llm_config.model_path, llm_config.model_url,
+            llm_config.sha256, llm_config.n_gpu_layers)
+
 
 def load_runner(llm_config):
-    """Return a Callable[[str], str] that runs the local model on a prompt.
+    """Return a cached Callable[[str], str] for this config (built once per process)."""
+    key = _runner_key(llm_config)
+    if key not in _runner_cache:
+        _runner_cache[key] = _build_runner(llm_config)
+    return _runner_cache[key]
+
+
+def _build_runner(llm_config):
+    """Build a Callable[[str], str] that runs the local model on a prompt.
 
     Raises RuntimeError with a clear message if llama-cpp-python is unavailable."""
     model_path = ensure_model(llm_config)
