@@ -1,7 +1,7 @@
 from functools import lru_cache
 from presidio_analyzer import AnalyzerEngine, RecognizerRegistry
 from thickanon.core.types import AnonymizeConfig, Entity
-from thickanon.detectors.recognizers import custom_recognizers
+from thickanon.detectors.recognizers import custom_recognizers, deny_list_recognizer
 
 
 @lru_cache(maxsize=4)
@@ -26,7 +26,6 @@ def _resolve_overlaps(results) -> list:
 
 def detect(text: str, config: AnonymizeConfig) -> list[Entity]:
     analyzer = _base_analyzer(config.language)
-    from thickanon.detectors.recognizers import deny_list_recognizer
     ad_hoc = [deny_list_recognizer(config.deny_list)] if config.deny_list else []
     raw = analyzer.analyze(
         text=text, language=config.language, ad_hoc_recognizers=ad_hoc
