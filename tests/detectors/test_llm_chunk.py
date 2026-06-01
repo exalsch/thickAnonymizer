@@ -18,3 +18,15 @@ def test_long_text_split_with_overlap_and_bases():
 
 def test_empty_text():
     assert iter_chunks("", max_chars=4) == []
+
+
+def test_small_max_chars_does_not_explode_chunk_count():
+    text = "x" * 1000
+    chunks = iter_chunks(text, max_chars=100, overlap=200)  # overlap > max_chars
+    # clamped overlap (<=50) -> step >= 50 -> far fewer than 100s of chunks
+    assert len(chunks) < 30
+    # still covers everything
+    covered = set()
+    for base, c in chunks:
+        covered.update(range(base, base + len(c)))
+    assert covered == set(range(1000))

@@ -1,7 +1,36 @@
 import json as _json
 import re as _re
+from typing import Callable
 
-_FENCE = _re.compile(r"^```(?:json)?\s*|\s*```$", _re.IGNORECASE)
+from thickanon.core.types import Entity
+from thickanon.detectors.normalize import normalize_type
+
+
+def _balanced_array(s: str, start: int) -> str | None:
+    """Return the balanced [...] substring beginning at index `start`, or None.
+    String-aware so brackets inside JSON strings don't affect depth."""
+    depth = 0
+    in_str = False
+    esc = False
+    for i in range(start, len(s)):
+        c = s[i]
+        if in_str:
+            if esc:
+                esc = False
+            elif c == "\\":
+                esc = True
+            elif c == '"':
+                in_str = False
+        else:
+            if c == '"':
+                in_str = True
+            elif c == "[":
+                depth += 1
+            elif c == "]":
+                depth -= 1
+                if depth == 0:
+                    return s[start:i + 1]
+    return None
 
 
 def parse_items(raw: str) -> list[dict]:
@@ -10,27 +39,25 @@ def parse_items(raw: str) -> list[dict]:
     Tolerant of code fences and surrounding prose; malformed output yields []."""
     if not raw or not raw.strip():
         return []
-    cleaned = _FENCE.sub("", raw.strip())
-    # fall back to the first [...] block if the model added prose
-    if not cleaned.lstrip().startswith("["):
-        m = _re.search(r"\[.*\]", cleaned, _re.DOTALL)
-        cleaned = m.group(0) if m else cleaned
-    try:
-        data = _json.loads(cleaned)
-    except ValueError:
-        return []
-    if not isinstance(data, list):
-        return []
-    out = []
-    for it in data:
-        if (isinstance(it, dict) and isinstance(it.get("type"), str)
-                and isinstance(it.get("text"), str)):
-            out.append({"type": it["type"], "text": it["text"]})
-    return out
-
-
-from thickanon.core.types import Entity
-from thickanon.detectors.normalize import normalize_type
+    s = raw.strip()
+    for i, ch in enumerate(s):
+        if ch != "[":
+            continue
+        arr = _balanced_array(s, i)
+        if arr is None:
+            continue
+        try:
+            data = _json.loads(arr)
+        except ValueError:
+            continue
+        if isinstance(data, list):
+            out = []
+            for it in data:
+                if (isinstance(it, dict) and isinstance(it.get("type"), str)
+                        and isinstance(it.get("text"), str)):
+                    out.append({"type": it["type"], "text": it["text"]})
+            return out
+    return []
 
 
 def resolve_spans(text: str, items: list[dict], confidence: float, base: int = 0) -> list[Entity]:
@@ -77,6 +104,7 @@ def iter_chunks(text: str, max_chars: int, overlap: int = 200) -> list[tuple[int
         return []
     if len(text) <= max_chars:
         return [(0, text)]
+    overlap = max(0, min(overlap, max_chars // 2))
     step = max(1, max_chars - overlap)
     chunks = []
     pos = 0
@@ -86,9 +114,6 @@ def iter_chunks(text: str, max_chars: int, overlap: int = 200) -> list[tuple[int
             break
         pos += step
     return chunks
-
-
-from typing import Callable
 
 
 def llm_detect(text: str, llm_config, runner: Callable[[str], str]) -> list[Entity]:
