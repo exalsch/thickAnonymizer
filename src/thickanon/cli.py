@@ -21,7 +21,8 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="thickanon")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    a = sub.add_parser("anonymize")
+    a = sub.add_parser("anonymize", aliases=["anon"])
+    a.set_defaults(action="anonymize")
     a.add_argument("paths", nargs="+")
     a.add_argument("--root", required=True)
     a.add_argument("--mapping", required=True)
@@ -30,14 +31,15 @@ def main(argv=None) -> int:
     a.add_argument("--backup")
     a.add_argument("--passphrase")
 
-    d = sub.add_parser("deanonymize")
+    d = sub.add_parser("deanonymize", aliases=["deanon"])
+    d.set_defaults(action="deanonymize")
     d.add_argument("paths", nargs="+")
     d.add_argument("--mapping", required=True)
     d.add_argument("--passphrase")
 
     ns = parser.parse_args(argv)
 
-    if ns.cmd == "anonymize":
+    if ns.action == "anonymize":
         cfg = AnonymizeConfig(mode=ReviewMode(ns.mode), deny_list=ns.deny)
         mapping = MappingStore()
         report = anonymize_paths(_expand(ns.paths), Path(ns.root), mapping, cfg,
