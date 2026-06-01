@@ -3,7 +3,8 @@ from pathlib import Path
 
 import webview
 
-from thickanon.core.types import AnonymizeConfig, ReviewMode
+from thickanon.core.types import AnonymizeConfig, LLMConfig, ReviewMode
+from thickanon.detectors import llm_model
 from thickanon.core.mapping import MappingStore
 from thickanon.core.orchestrator import (
     anonymize_paths,
@@ -91,7 +92,8 @@ class Api:
         }
 
     # ----- core actions -----
-    def anonymize(self, files, root, mapping_path, mode, deny, backup_dir, passphrase):
+    def anonymize(self, files, root, mapping_path, mode, deny, backup_dir, passphrase,
+                  llm=False, llm_instruction="", llm_gpu_layers=0):
         try:
             # Infer a root when the user didn't set one (e.g. pure drag-and-drop),
             # and default the mapping to a path outside that root.
@@ -106,7 +108,9 @@ class Api:
                 mapping_path = str(default_mapping_for_root(root_path))
 
             ensure_mapping_outside_root(mapping_path, root_path)
-            cfg = AnonymizeConfig(mode=ReviewMode(mode), deny_list=deny or [])
+            llm_cfg = LLMConfig(enabled=True, custom_instruction=llm_instruction,
+                                n_gpu_layers=llm_gpu_layers) if llm else None
+            cfg = AnonymizeConfig(mode=ReviewMode(mode), deny_list=deny or [], llm=llm_cfg)
             mapping = MappingStore()
             report = anonymize_paths(
                 _expand(files), root_path, mapping, cfg,
@@ -119,6 +123,13 @@ class Api:
                 "report": report.to_dict(),
                 "mapping_path": str(mapping_path),
             }
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
+    def download_model(self):
+        try:
+            path = llm_model.ensure_model(LLMConfig())
+            return {"ok": True, "path": str(path)}
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
 

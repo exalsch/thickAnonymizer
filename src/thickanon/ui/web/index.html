@@ -39,6 +39,12 @@
    <div><label>Backup folder (optional)</label><input id="backup" placeholder=".backup"></div>
  </div>
  <label>Passphrase (optional, encrypts mapping)</label><input id="pass" type="password">
+ <label><input type="checkbox" id="llm"> Use local LLM (higher recall, slower)</label>
+ <div class="row">
+   <div><label>LLM instruction (optional)</label><input id="llm_instr" placeholder="what counts as sensitive here"></div>
+   <div><label>GPU layers (0 = CPU)</label><input id="llm_gpu" type="number" value="0"></div>
+ </div>
+ <button class="ghost" onclick="downloadModel()">Download LLM model</button>
  <div>
    <button onclick="run('anonymize')">Anonymize</button>
    <button onclick="run('deanonymize')" style="background:#10b981">Deanonymize</button>
@@ -96,7 +102,8 @@
      res = await window.pywebview.api.anonymize(
        picked, $('root').value, mapping, $('mode').value,
        $('deny').value.split(',').map(s=>s.trim()).filter(Boolean),
-       $('backup').value || null, pass);
+       $('backup').value || null, pass,
+       $('llm').checked, $('llm_instr').value, parseInt($('llm_gpu').value)||0);
      if(res.ok){
        // reflect the mapping path actually used (in case it was auto-defaulted)
        if(res.mapping_path) $('mapping').value = res.mapping_path;
@@ -108,5 +115,10 @@
      res = await window.pywebview.api.deanonymize(picked, mapping, pass);
      out.textContent = res.ok ? 'Deanonymized.' : ('Error: ' + res.error);
    }
+ }
+ async function downloadModel(){
+   const out = $('out'); out.textContent = 'Downloading model…';
+   const res = await window.pywebview.api.download_model();
+   out.textContent = res.ok ? ('Model ready: ' + res.path) : ('Error: ' + res.error);
  }
 </script></body></html>
