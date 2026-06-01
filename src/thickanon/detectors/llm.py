@@ -86,3 +86,23 @@ def iter_chunks(text: str, max_chars: int, overlap: int = 200) -> list[tuple[int
             break
         pos += step
     return chunks
+
+
+from typing import Callable
+
+
+def llm_detect(text: str, llm_config, runner: Callable[[str], str]) -> list[Entity]:
+    """Run the model over (chunked) text and return resolved Entity spans.
+
+    `runner` maps a prompt to raw model text; injected so tests need no model."""
+    seen = set()
+    out = []
+    for base, chunk in iter_chunks(text, llm_config.max_chunk_chars):
+        prompt = build_prompt(chunk, llm_config.categories, llm_config.custom_instruction)
+        items = parse_items(runner(prompt))
+        for e in resolve_spans(chunk, items, llm_config.confidence, base=base):
+            key = (e.entity_type, e.start, e.end)
+            if key not in seen:
+                seen.add(key)
+                out.append(e)
+    return out
