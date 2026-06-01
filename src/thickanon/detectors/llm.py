@@ -66,3 +66,23 @@ def build_prompt(text: str, categories: list[str], custom_instruction: str = "")
         f"{text}\n"
         "----- END INPUT -----"
     )
+
+
+def iter_chunks(text: str, max_chars: int, overlap: int = 200) -> list[tuple[int, str]]:
+    """Split text into overlapping windows of at most max_chars.
+
+    Returns (base_offset, chunk_text) pairs covering the whole string. Overlap
+    reduces the chance of splitting an entity across a boundary."""
+    if not text:
+        return []
+    if len(text) <= max_chars:
+        return [(0, text)]
+    step = max(1, max_chars - overlap)
+    chunks = []
+    pos = 0
+    while pos < len(text):
+        chunks.append((pos, text[pos:pos + max_chars]))
+        if pos + max_chars >= len(text):
+            break
+        pos += step
+    return chunks
