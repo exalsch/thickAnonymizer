@@ -74,9 +74,16 @@ def test_suggest_defaults_infers_root_and_mapping(tmp_path):
     f = root / "n.txt"; f.write_text("hi", encoding="utf-8")
     api = Api()
     res = api.suggest_defaults([str(f)], root="")
-    assert res["ok"] and res["root"] == str(root)
+    assert res["ok"] and Path(res["root"]).resolve() == root.resolve()
     # suggested mapping must be outside the inferred root
-    assert Path(res["mapping"]).parent != root
+    assert Path(res["mapping"]).resolve().parent != root.resolve()
+
+
+def test_suggest_defaults_empty_when_no_common_root(tmp_path):
+    # infer_root returns None for an empty selection -> no defaults, no crash.
+    api = Api()
+    res = api.suggest_defaults([], root="")
+    assert res["ok"] and res["root"] == "" and res["mapping"] == ""
 
 
 def test_anonymize_with_blank_root_infers_and_succeeds(tmp_path):

@@ -50,7 +50,8 @@
  const drop = $('drop');
 
  function showFiles(){
-   $('files').innerHTML = picked.map(p=>`<li>${p}</li>`).join('');
+   const ul = $('files'); ul.textContent = '';
+   for(const p of picked){ const li = document.createElement('li'); li.textContent = p; ul.appendChild(li); }
  }
 
  // Fill root + mapping with sensible defaults when they're empty.

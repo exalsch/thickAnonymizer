@@ -26,7 +26,11 @@ def infer_root(paths) -> Path | None:
     if len(paths) == 1 and paths[0].is_dir():
         return paths[0]
     dirs = [p if p.is_dir() else p.parent for p in paths]
-    return Path(os.path.commonpath([str(d) for d in dirs]))
+    try:
+        return Path(os.path.commonpath([str(d) for d in dirs]))
+    except ValueError:
+        # e.g. paths on different Windows drives have no common root
+        return None
 
 
 def default_mapping_for_root(root) -> Path:
@@ -51,20 +55,20 @@ class Api:
     def pick_files(self):
         if self.window is None:
             return {"ok": False, "error": "no window"}
-        result = self.window.create_file_dialog(webview.OPEN_DIALOG, allow_multiple=True)
+        result = self.window.create_file_dialog(webview.FileDialog.OPEN, allow_multiple=True)
         return {"ok": True, "paths": list(result) if result else []}
 
     def pick_folder(self):
         if self.window is None:
             return {"ok": False, "error": "no window"}
-        result = self.window.create_file_dialog(webview.FOLDER_DIALOG)
+        result = self.window.create_file_dialog(webview.FileDialog.FOLDER)
         return {"ok": True, "paths": list(result) if result else []}
 
     def pick_mapping(self, suggested_name="mapping.json"):
         if self.window is None:
             return {"ok": False, "error": "no window"}
         result = self.window.create_file_dialog(
-            webview.SAVE_DIALOG, save_filename=suggested_name
+            webview.FileDialog.SAVE, save_filename=suggested_name
         )
         # SAVE_DIALOG may return a str or a 1-tuple depending on platform/version
         if not result:
@@ -79,6 +83,7 @@ class Api:
         root_path = Path(root) if str(root).strip() else infer_root(files)
         if root_path is None:
             return {"ok": True, "root": "", "mapping": ""}
+        root_path = root_path.resolve()
         return {
             "ok": True,
             "root": str(root_path),
@@ -90,9 +95,13 @@ class Api:
         try:
             # Infer a root when the user didn't set one (e.g. pure drag-and-drop),
             # and default the mapping to a path outside that root.
+            if not files:
+                return {"ok": False, "error": "no files selected"}
             root_path = Path(root) if str(root).strip() else infer_root(files)
             if root_path is None:
-                return {"ok": False, "error": "no files selected"}
+                return {"ok": False, "error":
+                        "could not infer a common root folder (e.g. files on "
+                        "different drives); set the Root folder manually"}
             if not str(mapping_path).strip():
                 mapping_path = str(default_mapping_for_root(root_path))
 
