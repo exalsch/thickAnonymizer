@@ -21,8 +21,12 @@ def _luhn_ok(number: str) -> bool:
         total += d
     return total % 10 == 0
 
-class CreditCardRecognizer(EntityRecognizer):
-    """Regex candidate + Luhn validation to cut false positives."""
+class LuhnCreditCardRecognizer(EntityRecognizer):
+    """Regex candidate + Luhn validation to cut false positives.
+
+    Named distinctly from Presidio's built-in ``CreditCardRecognizer`` so the
+    predefined-recognizer loader does not resolve its config to this class.
+    """
     PATTERN = r"\b(?:\d[ -]?){13,19}\b"
 
     def __init__(self):
@@ -63,7 +67,7 @@ def custom_recognizers() -> list:
             name="IbanRecognizer",
             patterns=[Pattern("iban", _IBAN, 0.8)],
         ),
-        CreditCardRecognizer(),
+        LuhnCreditCardRecognizer(),
     ]
 
 
