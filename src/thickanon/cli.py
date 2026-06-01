@@ -1,4 +1,5 @@
 import argparse
+import sys
 from pathlib import Path
 from thickanon.core.types import AnonymizeConfig, ReviewMode
 from thickanon.core.mapping import MappingStore
@@ -43,6 +44,13 @@ def main(argv=None) -> int:
                                  backup_root=Path(ns.backup) if ns.backup else None)
         mapping.save(ns.mapping, passphrase=ns.passphrase)
         print(report.summary())
+        if cfg.mode == ReviewMode.QUICK_REVIEW:
+            print(
+                "WARNING: quick_review mode has no interactive reviewer on the CLI, "
+                "so uncertain (gray-band) detections were NOT anonymized. "
+                "Use --mode auto_redact to over-redact, or the desktop app for interactive review.",
+                file=sys.stderr,
+            )
         return 0
 
     mapping = MappingStore.load(ns.mapping, passphrase=ns.passphrase)

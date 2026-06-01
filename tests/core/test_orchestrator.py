@@ -15,8 +15,8 @@ def test_anonymize_then_deanonymize_roundtrip(tmp_path):
 
     out = f.read_text(encoding="utf-8")
     assert "jane@acme.com" not in out and "10.0.0.5" not in out
-    assert "[EMAIL_ADDRESS_1]" in out and "[IP_1]" in out
-    assert report.totals["EMAIL_ADDRESS"] == 1
+    assert "[EMAIL_1]" in out and "[IP_1]" in out
+    assert report.totals["EMAIL"] == 1
 
     deanonymize_paths([f], mapping)
     assert f.read_text(encoding="utf-8") == "Email jane@acme.com from host 10.0.0.5"
