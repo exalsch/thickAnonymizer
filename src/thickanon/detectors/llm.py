@@ -1,3 +1,34 @@
+import json as _json
+import re as _re
+
+_FENCE = _re.compile(r"^```(?:json)?\s*|\s*```$", _re.IGNORECASE)
+
+
+def parse_items(raw: str) -> list[dict]:
+    """Parse model output into a list of {'type': str, 'text': str}.
+
+    Tolerant of code fences and surrounding prose; malformed output yields []."""
+    if not raw or not raw.strip():
+        return []
+    cleaned = _FENCE.sub("", raw.strip())
+    # fall back to the first [...] block if the model added prose
+    if not cleaned.lstrip().startswith("["):
+        m = _re.search(r"\[.*\]", cleaned, _re.DOTALL)
+        cleaned = m.group(0) if m else cleaned
+    try:
+        data = _json.loads(cleaned)
+    except ValueError:
+        return []
+    if not isinstance(data, list):
+        return []
+    out = []
+    for it in data:
+        if (isinstance(it, dict) and isinstance(it.get("type"), str)
+                and isinstance(it.get("text"), str)):
+            out.append({"type": it["type"], "text": it["text"]})
+    return out
+
+
 def build_prompt(text: str, categories: list[str], custom_instruction: str = "") -> str:
     cats = ", ".join(categories)
     extra = f"\nAdditional guidance: {custom_instruction}" if custom_instruction.strip() else ""
