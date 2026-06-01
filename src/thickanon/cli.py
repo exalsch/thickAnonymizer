@@ -1,7 +1,8 @@
 import argparse
 import sys
 from pathlib import Path
-from thickanon.core.types import AnonymizeConfig, ReviewMode
+from thickanon.core.types import AnonymizeConfig, ReviewMode, LLMConfig
+from thickanon.detectors import llm_model
 from thickanon.core.mapping import MappingStore
 from thickanon.core.orchestrator import (
     anonymize_paths,
@@ -34,6 +35,14 @@ def main(argv=None) -> int:
     a.add_argument("--deny", nargs="*", default=[])
     a.add_argument("--backup")
     a.add_argument("--passphrase")
+    a.add_argument("--llm", action="store_true", help="use the local LLM detector")
+    a.add_argument("--llm-model", help="path to a GGUF model file")
+    a.add_argument("--llm-gpu-layers", type=int, default=0)
+    a.add_argument("--llm-instruction", default="")
+
+    dl = sub.add_parser("download-model")
+    dl.set_defaults(action="download-model")
+    dl.add_argument("--llm-model", help="path to store the GGUF model file")
 
     d = sub.add_parser("deanonymize", aliases=["deanon"])
     d.set_defaults(action="deanonymize")
@@ -49,7 +58,12 @@ def main(argv=None) -> int:
         except ValueError as exc:
             print(f"ERROR: {exc}", file=sys.stderr)
             return 2
-        cfg = AnonymizeConfig(mode=ReviewMode(ns.mode), deny_list=ns.deny)
+        llm_cfg = None
+        if ns.llm:
+            llm_cfg = LLMConfig(enabled=True, model_path=ns.llm_model,
+                                n_gpu_layers=ns.llm_gpu_layers,
+                                custom_instruction=ns.llm_instruction)
+        cfg = AnonymizeConfig(mode=ReviewMode(ns.mode), deny_list=ns.deny, llm=llm_cfg)
         mapping = MappingStore()
         report = anonymize_paths(_expand(ns.paths), Path(ns.root), mapping, cfg,
                                  backup_root=Path(ns.backup) if ns.backup else None)
@@ -62,6 +76,11 @@ def main(argv=None) -> int:
                 "Use --mode auto_redact to over-redact, or the desktop app for interactive review.",
                 file=sys.stderr,
             )
+        return 0
+
+    if ns.action == "download-model":
+        path = llm_model.ensure_model(LLMConfig(model_path=getattr(ns, "llm_model", None)))
+        print(f"Model ready at: {path}")
         return 0
 
     mapping = MappingStore.load(ns.mapping, passphrase=ns.passphrase)
