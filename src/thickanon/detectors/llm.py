@@ -1,5 +1,4 @@
 import json as _json
-import re as _re
 from typing import Callable
 
 from thickanon.core.types import Entity
