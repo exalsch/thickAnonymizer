@@ -1,16 +1,25 @@
 <!doctype html><html><head><meta charset="utf-8"><title>thickAnonymizer</title>
 <style>
  body{font-family:system-ui;margin:0;padding:24px;background:#0f1115;color:#e6e6e6}
- #drop{border:2px dashed #556;border-radius:12px;padding:48px;text-align:center;color:#99a}
+ #drop{border:2px dashed #556;border-radius:12px;padding:36px;text-align:center;color:#99a}
  #drop.over{border-color:#6cf;color:#cdf}
  label{display:block;margin:10px 0 4px}
- input,select{width:100%;padding:8px;background:#1b1e26;color:#e6e6e6;border:1px solid #333;border-radius:6px}
- button{margin-top:16px;padding:10px 18px;border:0;border-radius:8px;background:#3b82f6;color:#fff;cursor:pointer}
+ input,select{width:100%;padding:8px;background:#1b1e26;color:#e6e6e6;border:1px solid #333;border-radius:6px;box-sizing:border-box}
+ button{margin-top:8px;padding:10px 18px;border:0;border-radius:8px;background:#3b82f6;color:#fff;cursor:pointer}
+ button.ghost{background:#2a2f3a}
+ #files{max-height:120px;overflow:auto;font-size:12px;color:#9aa}
  #out{white-space:pre-wrap;margin-top:16px;background:#1b1e26;padding:12px;border-radius:8px}
  .row{display:flex;gap:12px}.row>div{flex:1}
+ .field{display:flex;gap:8px;align-items:flex-end}.field>input{flex:1}
+ .field>button{margin-top:0;white-space:nowrap}
+ .hint{font-size:12px;color:#778;margin-top:4px}
 </style></head><body>
  <h2>thickAnonymizer</h2>
- <div id="drop">Drag files here, or use the file dialog button below</div>
+ <div id="drop">Drag files or a folder here</div>
+ <div style="margin-top:8px">
+   <button class="ghost" onclick="browse('files')">Browse files…</button>
+   <button class="ghost" onclick="browse('folder')">Browse folder…</button>
+ </div>
  <ul id="files"></ul>
  <div class="row">
    <div><label>Mode</label><select id="mode">
@@ -18,9 +27,13 @@
      <option value="auto_redact">Automatic — over-redact</option>
      <option value="auto_skip">Automatic — skip uncertain</option>
    </select></div>
-   <div><label>Root folder</label><input id="root" placeholder="C:\\data"></div>
+   <div><label>Root folder</label><input id="root" placeholder="(auto from selection)"></div>
  </div>
- <label>Mapping file</label><input id="mapping" placeholder="C:\\data\\mapping.json">
+ <label>Mapping file <span class="hint">— must be OUTSIDE the root folder</span></label>
+ <div class="field">
+   <input id="mapping" placeholder="(auto: beside the root folder)">
+   <button class="ghost" onclick="chooseMapping()">Choose…</button>
+ </div>
  <div class="row">
    <div><label>Deny-list (comma-separated)</label><input id="deny" placeholder="Project Falcon, acme"></div>
    <div><label>Backup folder (optional)</label><input id="backup" placeholder=".backup"></div>
@@ -33,28 +46,66 @@
  <div id="out"></div>
 <script>
  let picked = [];
- const drop = document.getElementById('drop');
+ const $ = id => document.getElementById(id);
+ const drop = $('drop');
+
+ function showFiles(){
+   $('files').innerHTML = picked.map(p=>`<li>${p}</li>`).join('');
+ }
+
+ // Fill root + mapping with sensible defaults when they're empty.
+ async function applyDefaults(){
+   if(!picked.length) return;
+   const res = await window.pywebview.api.suggest_defaults(picked, $('root').value);
+   if(res && res.ok){
+     if(!$('root').value && res.root) $('root').value = res.root;
+     if(!$('mapping').value && res.mapping) $('mapping').value = res.mapping;
+   }
+ }
+
  drop.addEventListener('dragover', e=>{e.preventDefault();drop.classList.add('over')});
  drop.addEventListener('dragleave', ()=>drop.classList.remove('over'));
- drop.addEventListener('drop', e=>{
+ drop.addEventListener('drop', async e=>{
    e.preventDefault(); drop.classList.remove('over');
    picked = [...e.dataTransfer.files].map(f=>f.path || f.name);
-   document.getElementById('files').innerHTML = picked.map(p=>`<li>${p}</li>`).join('');
+   showFiles(); await applyDefaults();
  });
+
+ async function browse(kind){
+   const res = kind==='folder'
+     ? await window.pywebview.api.pick_folder()
+     : await window.pywebview.api.pick_files();
+   if(res && res.ok && res.paths && res.paths.length){
+     picked = res.paths;
+     showFiles(); await applyDefaults();
+   }
+ }
+
+ async function chooseMapping(){
+   const res = await window.pywebview.api.pick_mapping('mapping.json');
+   if(res && res.ok && res.path) $('mapping').value = res.path;
+ }
+
  async function run(kind){
-   const out = document.getElementById('out'); out.textContent = 'Working…';
-   const mapping = document.getElementById('mapping').value;
-   const pass = document.getElementById('pass').value;
+   const out = $('out'); out.textContent = 'Working…';
+   const mapping = $('mapping').value;
+   const pass = $('pass').value;
    let res;
    if(kind==='anonymize'){
      res = await window.pywebview.api.anonymize(
-       picked, document.getElementById('root').value, mapping,
-       document.getElementById('mode').value,
-       document.getElementById('deny').value.split(',').map(s=>s.trim()).filter(Boolean),
-       document.getElementById('backup').value || null, pass);
+       picked, $('root').value, mapping, $('mode').value,
+       $('deny').value.split(',').map(s=>s.trim()).filter(Boolean),
+       $('backup').value || null, pass);
+     if(res.ok){
+       // reflect the mapping path actually used (in case it was auto-defaulted)
+       if(res.mapping_path) $('mapping').value = res.mapping_path;
+       out.textContent = (res.summary || 'Done.') + '\n\nMapping saved to: ' + (res.mapping_path||mapping);
+     } else {
+       out.textContent = 'Error: ' + res.error;
+     }
    } else {
      res = await window.pywebview.api.deanonymize(picked, mapping, pass);
+     out.textContent = res.ok ? 'Deanonymized.' : ('Error: ' + res.error);
    }
-   out.textContent = res.ok ? (res.summary || 'Done.') : ('Error: ' + res.error);
  }
 </script></body></html>

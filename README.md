@@ -21,9 +21,20 @@ before using them with AI tools, then de-anonymize the AI's output back.
 ## Desktop app
     python -m thickanon.ui.app
 
+Drag files or a folder onto the window (or use **Browse files… / Browse folder…**).
+**Root folder** and **Mapping file** auto-fill from your selection — the mapping defaults
+to a path *beside* the root (never inside it). Use **Choose…** to pick a mapping path
+yourself.
+
 ## Build a Windows .exe
     pyinstaller packaging/thickanon.spec
     # dist/thickAnonymizer.exe
+
+The exe **is** the desktop app: its entry point is `thickanon/ui/app.py` built with
+`console=False`, so **double-clicking `dist/thickAnonymizer.exe` opens the GUI window
+directly** — no terminal, no Python install needed on the target machine. The spaCy
+model and web UI are bundled inside the exe. (The CLI is the dev/console entry point
+`thickanon`; the packaged exe ships the GUI.)
 
 ## Known limitations
 
