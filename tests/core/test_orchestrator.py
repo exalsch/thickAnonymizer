@@ -34,3 +34,29 @@ def test_backup_created_when_requested(tmp_path):
     anonymize_paths([f], tmp_path, MappingStore(),
                     AnonymizeConfig(mode=ReviewMode.AUTO_REDACT), backup_root=backup_root)
     assert (backup_root / "a.txt").read_text(encoding="utf-8") == "John here"
+
+
+def test_failing_file_is_recorded_and_batch_continues(tmp_path, monkeypatch):
+    # A file that errors during processing must not abort the batch; it should be
+    # recorded as skipped and the remaining files still anonymized.
+    bad = tmp_path / "bad.txt"; bad.write_text("John here", encoding="utf-8")
+    good = tmp_path / "good.txt"; good.write_text("ping 10.0.0.9", encoding="utf-8")
+
+    import thickanon.io.text as text_handler
+    real_read = text_handler.read_fragments
+
+    def flaky_read(path):
+        if Path(path).name == "bad.txt":
+            raise OSError("boom")
+        return real_read(path)
+
+    monkeypatch.setattr(text_handler, "read_fragments", flaky_read)
+
+    cfg = AnonymizeConfig(mode=ReviewMode.AUTO_REDACT)
+    report = anonymize_paths([bad, good], tmp_path, MappingStore(), cfg)
+
+    assert str(bad) in report.skipped
+    assert "boom" in report.skipped[str(bad)]
+    # the good file was still processed despite the bad one failing first
+    assert "10.0.0.9" not in good.read_text(encoding="utf-8")
+    assert str(good) in report.files

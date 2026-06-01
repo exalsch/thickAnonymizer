@@ -28,25 +28,30 @@ def anonymize_paths(paths, root, mapping: MappingStore, config: AnonymizeConfig,
             report.record_skip(path, f"unsupported: {exc}")
             continue
 
-        if backup_root is not None:
-            backup_file(path, root, backup_root)
+        try:
+            if backup_root is not None:
+                backup_file(path, root, backup_root)
 
-        fragments = handler.read_fragments(path)
-        new_fragments, applied_all, flagged_all, residual_all = [], [], [], []
-        for frag in fragments:
-            entities = detect(frag, config)
-            apply_now, flagged = partition(entities, config)
-            if flagged and review_callback is not None:
-                approved = review_callback(flagged, frag, path)
-                apply_now = apply_now + list(approved)
-                flagged = [e for e in flagged if e not in approved]
-            new_text = apply_tokens(frag, apply_now, mapping)
-            residual = residual_scan(new_text)
-            new_fragments.append(new_text)
-            applied_all += apply_now
-            flagged_all += flagged
-            residual_all += residual
-        handler.write_fragments(path, new_fragments)
+            fragments = handler.read_fragments(path)
+            new_fragments, applied_all, flagged_all, residual_all = [], [], [], []
+            for frag in fragments:
+                entities = detect(frag, config)
+                apply_now, flagged = partition(entities, config)
+                if flagged and review_callback is not None:
+                    approved = review_callback(flagged, frag, path)
+                    apply_now = apply_now + list(approved)
+                    flagged = [e for e in flagged if e not in approved]
+                new_text = apply_tokens(frag, apply_now, mapping)
+                residual = residual_scan(new_text)
+                new_fragments.append(new_text)
+                applied_all += apply_now
+                flagged_all += flagged
+                residual_all += residual
+            handler.write_fragments(path, new_fragments)
+        except Exception as exc:
+            # One bad file must not abort the whole batch: record it and move on.
+            report.record_skip(path, f"error: {exc}")
+            continue
         report.record_file(path, applied_all, flagged_all, residual_all)
     return report
 
