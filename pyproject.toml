@@ -14,6 +14,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest", "pyinstaller"]
+llm = ["llama-cpp-python"]
 
 [project.scripts]
 thickanon = "thickanon.cli:main"

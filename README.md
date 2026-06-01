@@ -50,6 +50,35 @@ that runs on thinc/numpy, so torch is unused for inference and dropping it takes
 from ~3.1 GB to ~580 MB. (If you later add a transformer-based spaCy model or an on-device
 LLM detector, you'll need to remove the relevant entries from `_EXCLUDES` in the spec.)
 
+## Local LLM detection (optional)
+
+Install the extra:
+
+    pip install -e ".[dev,llm]"
+    # or, for the installed package:
+    pip install "thickanon[llm]"
+
+Enable it:
+
+- **CLI:** pass `--llm` (optionally add `--llm-gpu-layers N` for GPU offload).
+- **Desktop app:** toggle **Use local LLM** in the settings panel.
+
+On first run the default GGUF model is downloaded automatically to
+`~/.thickanon/models/`. To pre-fetch it before going offline:
+
+    thickanon download-model
+
+**Important notes:**
+
+- The model is loaded **once per process**. Pass a folder to `anonymize` instead
+  of looping the exe per file — restarting per file re-pays the ~2–5 s load cost.
+- **GPU offload** (`--llm-gpu-layers N`) requires a CUDA-enabled llama.cpp build;
+  the default wheel is CPU-only.
+- LLM detections are treated as **gray-band** results: shown for human review in
+  `quick_review` mode and applied automatically in `auto_redact` mode.
+- If LLM mode is enabled but the model cannot be loaded, the tool raises a **hard
+  error** — it does not silently fall back to spaCy-only detection.
+
 ## Known limitations
 
 - **Residual leaks are REPORTED, not blocked:** in `auto_skip` mode and in non-interactive `quick_review`, the output file may still contain low-confidence PII. Check the report's "RESIDUAL LEAKS FLAGGED" count before sharing.
