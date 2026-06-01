@@ -5,7 +5,11 @@ def _string_cells(wb):
     for ws in wb.worksheets:
         for row in ws.iter_rows():
             for cell in row:
-                if isinstance(cell.value, str) and cell.value.strip():
+                if (
+                    isinstance(cell.value, str)
+                    and cell.value.strip()
+                    and cell.data_type != "f"
+                ):
                     yield cell
 
 
@@ -16,6 +20,12 @@ def read_fragments(path) -> list[str]:
 
 def write_fragments(path, fragments: list[str]) -> None:
     wb = load_workbook(str(path))
-    for cell, new_text in zip(_string_cells(wb), fragments):
+    targets = list(_string_cells(wb))
+    if len(fragments) != len(targets):
+        raise ValueError(
+            f"Fragment count mismatch: expected {len(targets)} fragments, "
+            f"got {len(fragments)}"
+        )
+    for cell, new_text in zip(targets, fragments):
         cell.value = new_text
     wb.save(str(path))

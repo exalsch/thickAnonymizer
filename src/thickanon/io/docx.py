@@ -25,7 +25,13 @@ def _set_paragraph_text(paragraph, new_text: str) -> None:
 
 def write_fragments(path, fragments: list[str]) -> None:
     doc = Document(str(path))
-    for paragraph, new_text in zip(_iter_paragraphs(doc), fragments):
+    targets = list(_iter_paragraphs(doc))
+    if len(fragments) != len(targets):
+        raise ValueError(
+            f"Fragment count mismatch: expected {len(targets)} fragments, "
+            f"got {len(fragments)}"
+        )
+    for paragraph, new_text in zip(targets, fragments):
         if paragraph.text != new_text:
             _set_paragraph_text(paragraph, new_text)
     doc.save(str(path))
