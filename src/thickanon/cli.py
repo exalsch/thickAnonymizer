@@ -9,7 +9,10 @@ def _expand(paths) -> list[Path]:
     out = []
     for p in paths:
         p = Path(p)
-        out.extend(f for f in p.rglob("*") if f.is_file()) if p.is_dir() else out.append(p)
+        if p.is_dir():
+            out.extend(f for f in p.rglob("*") if f.is_file())
+        else:
+            out.append(p)
     return out
 
 
