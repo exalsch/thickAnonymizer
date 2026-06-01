@@ -29,6 +29,30 @@ def parse_items(raw: str) -> list[dict]:
     return out
 
 
+from thickanon.core.types import Entity
+from thickanon.detectors.normalize import normalize_type
+
+
+def resolve_spans(text: str, items: list[dict], confidence: float, base: int = 0) -> list[Entity]:
+    """Locate each item's verbatim 'text' in `text` and emit Entity spans.
+
+    Items whose text does not occur verbatim are dropped (hallucinations).
+    Every occurrence of a found substring becomes its own span. Offsets are
+    shifted by `base` (used when `text` is a chunk of a larger fragment)."""
+    out = []
+    for it in items:
+        needle = it["text"]
+        if not needle:
+            continue
+        etype = normalize_type(it["type"])
+        start = text.find(needle)
+        while start != -1:
+            out.append(Entity(base + start, base + start + len(needle), etype,
+                              confidence, needle))
+            start = text.find(needle, start + len(needle))
+    return out
+
+
 def build_prompt(text: str, categories: list[str], custom_instruction: str = "") -> str:
     cats = ", ".join(categories)
     extra = f"\nAdditional guidance: {custom_instruction}" if custom_instruction.strip() else ""
