@@ -31,3 +31,36 @@ def ensure_model(llm_config) -> Path:
         raise ValueError("downloaded model failed sha256 verification")
     tmp.replace(dest)
     return dest
+
+
+# GBNF grammar constraining output to a JSON array of {"type","text"} objects.
+_JSON_GRAMMAR = r'''
+root   ::= "[" ws (obj (ws "," ws obj)*)? ws "]"
+obj    ::= "{" ws "\"type\"" ws ":" ws string ws "," ws "\"text\"" ws ":" ws string ws "}"
+string ::= "\"" ([^"\\] | "\\" .)* "\""
+ws     ::= [ \t\n]*
+'''
+
+
+def load_runner(llm_config):
+    """Return a Callable[[str], str] that runs the local model on a prompt.
+
+    Raises RuntimeError with a clear message if llama-cpp-python is unavailable."""
+    model_path = ensure_model(llm_config)
+    try:
+        from llama_cpp import Llama, LlamaGrammar
+    except ImportError as exc:
+        raise RuntimeError(
+            "LLM mode requires llama-cpp-python. Install it (pip install "
+            "llama-cpp-python) or disable LLM mode."
+        ) from exc
+    llm = Llama(model_path=str(model_path), n_gpu_layers=llm_config.n_gpu_layers,
+                n_ctx=8192, verbose=False)
+    grammar = LlamaGrammar.from_string(_JSON_GRAMMAR)
+
+    def runner(prompt: str) -> str:
+        out = llm.create_completion(prompt, max_tokens=1024, temperature=0.0,
+                                    grammar=grammar)
+        return out["choices"][0]["text"]
+
+    return runner
