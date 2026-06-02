@@ -19,6 +19,14 @@ for pkg in ["en_core_web_lg", "presidio_analyzer", "presidio_anonymizer"]:
     d, b, h = collect_all(pkg)
     datas += d; binaries += b; hiddenimports += h
 
+# Optional LLM backend: bundle llama_cpp only if it is installed. The default
+# build is CPU-only; LLM mode requires installing the [llm] extra before building.
+try:
+    _d, _b, _h = collect_all("llama_cpp")
+    datas += _d; binaries += _b; hiddenimports += _h
+except Exception:
+    pass
+
 # ensure all of our own modules are bundled (the entry imports them lazily)
 hiddenimports += collect_submodules("thickanon")
 
