@@ -47,23 +47,24 @@ target machine. (In a dev checkout, `thickanon` is the console-script entry poin
 
 The build excludes the PyTorch/CUDA stack: the `en_core_web_lg` pipeline is a CNN model
 that runs on thinc/numpy, so torch is unused for inference and dropping it takes the exe
-from ~3.1 GB to ~580 MB. (If you later add a transformer-based spaCy model or an on-device
-LLM detector, you'll need to remove the relevant entries from `_EXCLUDES` in the spec.)
+from ~3.1 GB to ~580 MB. (If you later add a transformer-based spaCy model, you'll need
+to remove the relevant entries from `_EXCLUDES` in the spec.)
 
-## Local LLM detection (optional)
+## Neural NER detection (GLiNER, optional)
 
 Install the extra:
 
-    pip install -e ".[dev,llm]"
-    # or, for the installed package:
-    pip install "thickanon[llm]"
+    pip install -e ".[dev,gliner]"
+    # or just the runtime wheel (prebuilt CPU, no torch/Rust toolchain required):
+    pip install fast_gliner
 
 Enable it:
 
-- **CLI:** pass `--llm` (optionally add `--llm-gpu-layers N` for GPU offload).
-- **Desktop app:** toggle **Use local LLM** in the settings panel.
+- **CLI:** pass `--gliner` (optionally configure `--gliner-labels "person,organization,email"`
+  and `--gliner-threshold 0.5`).
+- **Desktop app:** toggle **Use neural NER (GLiNER)** in the settings panel.
 
-On first run the default GGUF model is downloaded automatically to
+On first run the default ONNX GLiNER model is downloaded automatically to
 `~/.thickanon/models/`. To pre-fetch it before going offline:
 
     thickanon download-model
@@ -71,12 +72,13 @@ On first run the default GGUF model is downloaded automatically to
 **Important notes:**
 
 - The model is loaded **once per process**. Pass a folder to `anonymize` instead
-  of looping the exe per file — restarting per file re-pays the ~2–5 s load cost.
-- **GPU offload** (`--llm-gpu-layers N`) requires a CUDA-enabled llama.cpp build;
+  of looping the exe per file — restarting per file re-pays the model load cost.
+- **GPU acceleration** (`--gliner-gpu`) requires the `fast_gliner[cuda]` wheel;
   the default wheel is CPU-only.
-- LLM detections are treated as **gray-band** results: shown for human review in
-  `quick_review` mode and applied automatically in `auto_redact` mode.
-- If LLM mode is enabled but the model cannot be loaded, the tool raises a **hard
+- GLiNER's real per-entity confidence scores feed the normal review bands
+  (below `low_threshold` → ignored; above `high_threshold` → auto-anonymized;
+  in between → gray band / human review).
+- If GLiNER mode is enabled but the model cannot be loaded, the tool raises a **hard
   error** — it does not silently fall back to spaCy-only detection.
 
 ## Known limitations
