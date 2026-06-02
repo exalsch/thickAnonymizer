@@ -3,8 +3,8 @@ from presidio_analyzer import AnalyzerEngine, RecognizerRegistry
 from thickanon.core.types import AnonymizeConfig, Entity
 from thickanon.detectors.normalize import normalize_type
 from thickanon.detectors.recognizers import custom_recognizers, deny_list_recognizer
-from thickanon.detectors import llm_model
-from thickanon.detectors.llm import llm_detect
+from thickanon.detectors import gliner_model
+from thickanon.detectors.gliner import gliner_detect
 
 
 @lru_cache(maxsize=4)
@@ -40,10 +40,10 @@ def _regex_denylist_entities(text: str, config) -> list[Entity]:
 
 
 def detect(text: str, config: AnonymizeConfig) -> list[Entity]:
-    if config.llm is not None and config.llm.enabled:
+    if config.gliner is not None and config.gliner.enabled:
         entities = _regex_denylist_entities(text, config)
-        runner = llm_model.load_runner(config.llm)
-        entities += llm_detect(text, config.llm, runner)
+        model = gliner_model.load_model(config.gliner)
+        entities += gliner_detect(text, config.gliner, model)
     else:
         analyzer = _base_analyzer(config.language)
         ad_hoc = [deny_list_recognizer(config.deny_list)] if config.deny_list else []
