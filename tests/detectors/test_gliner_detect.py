@@ -30,7 +30,9 @@ def test_offsets_score_and_type_normalized():
     by = {e.entity_type: e for e in ents}
     assert text[by["PERSON"].start:by["PERSON"].end] == "John Carter"
     assert by["PERSON"].score == 0.9
-    assert "PHONE_NUMBER" in by                       # "phone number" -> normalized
+    # "phone number" -> PHONE_NUMBER -> normalized to PHONE (same alias the spaCy
+    # path uses), so both detectors emit a consistent [PHONE_n] token.
+    assert "PHONE" in by
 
 
 def test_below_threshold_dropped():
