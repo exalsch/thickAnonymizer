@@ -39,12 +39,13 @@
    <div><label>Backup folder (optional)</label><input id="backup" placeholder=".backup"></div>
  </div>
  <label>Passphrase (optional, encrypts mapping)</label><input id="pass" type="password">
- <label><input type="checkbox" id="llm"> Use local LLM (higher recall, slower)</label>
+ <label><input type="checkbox" id="gliner"> Use neural NER (GLiNER, higher recall)</label>
  <div class="row">
-   <div><label>LLM instruction (optional)</label><input id="llm_instr" placeholder="what counts as sensitive here"></div>
-   <div><label>GPU layers (0 = CPU)</label><input id="llm_gpu" type="number" value="0"></div>
+   <div><label>Labels (comma-separated)</label><input id="gliner_labels" placeholder="person, organization, email"></div>
+   <div><label>Threshold</label><input id="gliner_thr" type="number" step="0.05" value="0.5"></div>
  </div>
- <button class="ghost" onclick="downloadModel()">Download LLM model</button>
+ <label><input type="checkbox" id="gliner_gpu"> Use GPU (needs CUDA build)</label>
+ <button class="ghost" onclick="downloadModel()">Download GLiNER model</button>
  <div>
    <button onclick="run('anonymize')">Anonymize</button>
    <button onclick="run('deanonymize')" style="background:#10b981">Deanonymize</button>
@@ -103,7 +104,7 @@
        picked, $('root').value, mapping, $('mode').value,
        $('deny').value.split(',').map(s=>s.trim()).filter(Boolean),
        $('backup').value || null, pass,
-       $('llm').checked, $('llm_instr').value, parseInt($('llm_gpu').value)||0);
+       $('gliner').checked, $('gliner_labels').value, parseFloat($('gliner_thr').value)||0.5, $('gliner_gpu').checked);
      if(res.ok){
        // reflect the mapping path actually used (in case it was auto-defaulted)
        if(res.mapping_path) $('mapping').value = res.mapping_path;
@@ -117,8 +118,8 @@
    }
  }
  async function downloadModel(){
-   const out = $('out'); out.textContent = 'Downloading model…';
+   const out = $('out'); out.textContent = 'Downloading GLiNER model…';
    const res = await window.pywebview.api.download_model();
-   out.textContent = res.ok ? ('Model ready: ' + res.path) : ('Error: ' + res.error);
+   out.textContent = res.ok ? 'GLiNER model ready.' : ('Error: ' + res.error);
  }
 </script></body></html>

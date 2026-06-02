@@ -3,8 +3,8 @@ from pathlib import Path
 
 import webview
 
-from thickanon.core.types import AnonymizeConfig, LLMConfig, ReviewMode
-from thickanon.detectors import llm_model
+from thickanon.core.types import AnonymizeConfig, GLiNERConfig, ReviewMode
+from thickanon.detectors import gliner_model
 from thickanon.core.mapping import MappingStore
 from thickanon.core.orchestrator import (
     anonymize_paths,
@@ -93,7 +93,7 @@ class Api:
 
     # ----- core actions -----
     def anonymize(self, files, root, mapping_path, mode, deny, backup_dir, passphrase,
-                  llm=False, llm_instruction="", llm_gpu_layers=0):
+                  gliner=False, gliner_labels="", gliner_threshold=0.5, gliner_gpu=False):
         try:
             # Infer a root when the user didn't set one (e.g. pure drag-and-drop),
             # and default the mapping to a path outside that root.
@@ -108,9 +108,14 @@ class Api:
                 mapping_path = str(default_mapping_for_root(root_path))
 
             ensure_mapping_outside_root(mapping_path, root_path)
-            llm_cfg = LLMConfig(enabled=True, custom_instruction=llm_instruction,
-                                n_gpu_layers=llm_gpu_layers) if llm else None
-            cfg = AnonymizeConfig(mode=ReviewMode(mode), deny_list=deny or [], llm=llm_cfg)
+            gliner_cfg = None
+            if gliner:
+                kw = {"enabled": True, "threshold": gliner_threshold, "gpu": gliner_gpu}
+                labels = [s.strip() for s in (gliner_labels or "").split(",") if s.strip()]
+                if labels:
+                    kw["labels"] = labels
+                gliner_cfg = GLiNERConfig(**kw)
+            cfg = AnonymizeConfig(mode=ReviewMode(mode), deny_list=deny or [], gliner=gliner_cfg)
             mapping = MappingStore()
             report = anonymize_paths(
                 _expand(files), root_path, mapping, cfg,
@@ -128,8 +133,8 @@ class Api:
 
     def download_model(self):
         try:
-            path = llm_model.ensure_model(LLMConfig())
-            return {"ok": True, "path": str(path)}
+            gliner_model.load_model(GLiNERConfig())
+            return {"ok": True}
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
 
