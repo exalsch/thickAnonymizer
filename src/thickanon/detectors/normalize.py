@@ -2,7 +2,6 @@ _TYPE_NORMALIZE = {
     "EMAIL_ADDRESS": "EMAIL",
     "IP_ADDRESS": "IP",
     "IBAN_CODE": "IBAN",
-    "PHONE_NUMBER": "PHONE",
     "DENY": "TERM",
 }
 
