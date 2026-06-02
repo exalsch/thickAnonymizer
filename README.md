@@ -64,10 +64,12 @@ Enable it:
   and `--gliner-threshold 0.5`).
 - **Desktop app:** toggle **Use neural NER (GLiNER)** in the settings panel.
 
-On first run the default ONNX GLiNER model is downloaded automatically to
-`~/.thickanon/models/`. To pre-fetch it before going offline:
+On first run the default ONNX GLiNER model is downloaded automatically into the
+Hugging Face cache (`~/.cache/huggingface/`). To pre-fetch it before going offline:
 
     thickanon download-model
+
+(Pass `--gliner-model <dir>` to load a model from a specific local directory instead.)
 
 **Important notes:**
 

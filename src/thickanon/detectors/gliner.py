@@ -27,7 +27,7 @@ def gliner_detect(text: str, cfg, model) -> list[Entity]:
     for base, chunk in iter_chunks(text, cfg.max_chunk_chars):
         for sp in model.predict_entities(chunk, cfg.labels, threshold=cfg.threshold):
             score = sp.get("score", 0.0)
-            if score < cfg.threshold:
+            if not isinstance(score, (int, float)) or score < cfg.threshold:
                 continue
             start, end = sp.get("start"), sp.get("end")
             if not isinstance(start, int) or not isinstance(end, int):
