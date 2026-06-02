@@ -45,6 +45,27 @@ class LLMConfig:
     max_chunk_chars: int = 4000
 
 
+DEFAULT_GLINER_LABELS = [
+    "person", "organization", "location", "email", "phone number",
+    "address", "date of birth", "job title", "account number", "id number",
+]
+
+# A fast_gliner-supported ONNX GLiNER model on Hugging Face. Implementer: confirm
+# this repo loads with fast_gliner (a later task); if not, pin another ONNX GLiNER repo.
+DEFAULT_GLINER_MODEL_ID = "onnx-community/gliner_multi_pii-v1"
+
+
+@dataclass
+class GLiNERConfig:
+    enabled: bool = False
+    model_id: str = DEFAULT_GLINER_MODEL_ID
+    model_path: str | None = None
+    labels: list[str] = field(default_factory=lambda: list(DEFAULT_GLINER_LABELS))
+    threshold: float = 0.5
+    gpu: bool = False
+    max_chunk_chars: int = 4000
+
+
 @dataclass
 class AnonymizeConfig:
     mode: ReviewMode = ReviewMode.QUICK_REVIEW
@@ -54,3 +75,4 @@ class AnonymizeConfig:
     deny_list: list[str] = field(default_factory=list)
     language: str = "en"
     llm: "LLMConfig | None" = None
+    gliner: "GLiNERConfig | None" = None
