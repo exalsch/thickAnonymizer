@@ -47,8 +47,10 @@ target machine. (In a dev checkout, `thickanon` is the console-script entry poin
 
 The build excludes the PyTorch/CUDA stack: the `en_core_web_lg` pipeline is a CNN model
 that runs on thinc/numpy, so torch is unused for inference and dropping it takes the exe
-from ~3.1 GB to ~580 MB. (If you later add a transformer-based spaCy model, you'll need
-to remove the relevant entries from `_EXCLUDES` in the spec.)
+from ~3.1 GB to ~580 MB. The default exe therefore ships the **regex + spaCy** detector
+only. To bundle the **optional GLiNER** backend (or a transformer-based spaCy model) into
+the exe, install the `[gliner]` extra and remove `"torch"`/`"transformers"` from
+`_EXCLUDES` in `packaging/thickanon.spec` before building — the exe will grow accordingly.
 
 ## Neural NER detection (GLiNER, optional)
 
