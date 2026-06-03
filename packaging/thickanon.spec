@@ -19,11 +19,14 @@ for pkg in ["en_core_web_lg", "presidio_analyzer", "presidio_anonymizer"]:
     d, b, h = collect_all(pkg)
     datas += d; binaries += b; hiddenimports += h
 
-# Optional GLiNER backend: bundle fast_gliner only if installed. Default build is
-# CPU-only; GLiNER mode requires installing the [gliner] extra before building.
+# Optional GLiNER backend: bundle the gliner package (and its CPU torch/transformers/
+# onnxruntime deps) only if installed. The default build excludes torch/transformers
+# (see _EXCLUDES) for a slim CPU-only exe; to ship GLiNER, install the [gliner] extra
+# AND remove "torch"/"transformers" from _EXCLUDES before building.
 try:
-    _d, _b, _h = collect_all("fast_gliner")
-    datas += _d; binaries += _b; hiddenimports += _h
+    for _pkg in ("gliner", "onnxruntime"):
+        _d, _b, _h = collect_all(_pkg)
+        datas += _d; binaries += _b; hiddenimports += _h
 except Exception:
     pass
 

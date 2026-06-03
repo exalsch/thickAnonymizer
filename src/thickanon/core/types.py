@@ -22,9 +22,8 @@ DEFAULT_GLINER_LABELS = [
     "address", "date of birth", "job title", "account number", "id number",
 ]
 
-# A fast_gliner-supported ONNX GLiNER model on Hugging Face. Implementer: confirm
-# this repo loads with fast_gliner (a later task); if not, pin another ONNX GLiNER repo.
-DEFAULT_GLINER_MODEL_ID = "onnx-community/gliner_multi_pii-v1"
+# A PII-capable GLiNER model on Hugging Face, loadable via the `gliner` package.
+DEFAULT_GLINER_MODEL_ID = "urchade/gliner_multi_pii-v1"
 
 
 @dataclass

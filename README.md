@@ -55,8 +55,11 @@ to remove the relevant entries from `_EXCLUDES` in the spec.)
 Install the extra:
 
     pip install -e ".[dev,gliner]"
-    # or just the runtime wheel (prebuilt CPU, no torch/Rust toolchain required):
-    pip install fast_gliner
+    # or just the runtime:
+    pip install gliner
+
+This pulls the `gliner` package plus onnxruntime, transformers, and CPU-only PyTorch
+(~200 MB) — all with prebuilt wheels for Windows / Python 3.13.
 
 Enable it:
 
@@ -64,7 +67,7 @@ Enable it:
   and `--gliner-threshold 0.5`).
 - **Desktop app:** toggle **Use neural NER (GLiNER)** in the settings panel.
 
-On first run the default ONNX GLiNER model is downloaded automatically into the
+On first run the default GLiNER model is downloaded automatically into the
 Hugging Face cache (`~/.cache/huggingface/`). To pre-fetch it before going offline:
 
     thickanon download-model
@@ -75,8 +78,8 @@ Hugging Face cache (`~/.cache/huggingface/`). To pre-fetch it before going offli
 
 - The model is loaded **once per process**. Pass a folder to `anonymize` instead
   of looping the exe per file — restarting per file re-pays the model load cost.
-- **GPU acceleration** (`--gliner-gpu`) requires the `fast_gliner[cuda]` wheel;
-  the default wheel is CPU-only.
+- **GPU acceleration** (`--gliner-gpu`) requires a CUDA-enabled PyTorch install;
+  the default torch wheel is CPU-only.
 - GLiNER's real per-entity confidence scores feed the normal review bands
   (below `low_threshold` → ignored; above `high_threshold` → auto-anonymized;
   in between → gray band / human review).

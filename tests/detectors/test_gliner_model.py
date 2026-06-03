@@ -3,16 +3,16 @@ from thickanon.core.types import GLiNERConfig
 from thickanon.detectors import gliner_model
 
 
-def test_load_model_raises_clear_error_without_fast_gliner(monkeypatch):
+def test_load_model_raises_clear_error_without_gliner(monkeypatch):
     real_import = builtins.__import__
     def fake_import(name, *a, **k):
-        if name == "fast_gliner" or name.startswith("fast_gliner."):
-            raise ImportError("no fast_gliner")
+        if name == "gliner" or name.startswith("gliner."):
+            raise ImportError("no gliner")
         return real_import(name, *a, **k)
     monkeypatch.setattr(builtins, "__import__", fake_import)
     with pytest.raises(RuntimeError) as exc:
         gliner_model.load_model(GLiNERConfig(model_id="x"))
-    assert "fast_gliner" in str(exc.value)
+    assert "gliner" in str(exc.value)
 
 
 def test_load_model_is_cached_per_config(monkeypatch):
