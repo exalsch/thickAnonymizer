@@ -11,6 +11,22 @@ dist/
 .venv/
 venv/
 
+# Editors / IDEs
+.vscode/
+.idea/
+*.swp
+
+# OS cruft
+.DS_Store
+Thumbs.db
+
 # thickAnonymizer runtime artifacts
+# NOTE: the mapping file IS the reversible key (it maps tokens back to the
+# original PII). Never commit one. These patterns catch the common names;
+# always keep your real mapping outside the repo.
 .backup/
 *.mapping.json
+*.map.json
+
+# Local scratch / sandbox (test data, sample mappings, ad-hoc runs)
+_sandbox/

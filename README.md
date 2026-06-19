@@ -3,6 +3,13 @@
 Mass-anonymize files into readable tokens (`[PERSON_1]`, `[IP_1]`, `[HOST_1]`)
 before using them with AI tools, then de-anonymize the AI's output back.
 
+> ⚠️ **Status: under active development (v0.1.0, alpha).** This project is a
+> work in progress and is **not yet production-ready**. APIs, the CLI, and
+> output formats may change without notice, and detection is not guaranteed to
+> catch every piece of PII - see [Known limitations](#known-limitations) below.
+> Review the residual-leak report before sharing any anonymized output, and use
+> at your own risk.
+
 ## Install (dev)
     pip install -e ".[dev]"
     python -m spacy download en_core_web_lg
@@ -98,3 +105,7 @@ Hugging Face cache (`~/.cache/huggingface/`). To pre-fetch it before going offli
 - **The mapping file defaults to plaintext and IS the sensitive data** — always use a passphrase (`--passphrase` / the UI field) when the mapping could be exposed.
 - **Deny-list matching is exact (case-insensitive), not fuzzy.**
 - **PDFs and scanned documents are out of scope in v1.**
+
+## License
+
+[MIT](LICENSE) © 2026 Alex Schick.
