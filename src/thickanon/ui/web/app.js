@@ -21,10 +21,17 @@ const state = {
   approved: new Set(),
   report: null,
   busy: false,
-  startedAt: 0
+  startedAt: 0,
+  started: false
 };
 
 const DETECTION_INPUTS = ['mode', 'deny', 'gliner', 'gliner-labels', 'gliner-threshold', 'gliner-gpu'];
+
+const LOCKED_WHILE_BUSY = [
+  'browse-files', 'browse-folder', 'clear-files', 'choose-mapping', 'choose-backup',
+  'mode', 'root', 'mapping', 'backup-enabled', 'deny', 'pass', 'pass-confirm',
+  'gliner', 'gliner-labels', 'gliner-threshold', 'gliner-gpu', 'download-model'
+];
 
 /* ---------- small helpers ---------- */
 
@@ -34,8 +41,14 @@ function api() {
 
 function banner(message, kind) {
   const el = $('banner');
-  if (!message) { el.hidden = true; el.textContent = ''; return; }
-  el.textContent = message;
+  const messages = Array.isArray(message) ? message.filter(Boolean) : (message ? [message] : []);
+  if (!messages.length) { el.hidden = true; el.textContent = ''; return; }
+  el.textContent = '';
+  for (const line of messages) {
+    const div = document.createElement('div');
+    div.textContent = line;
+    el.appendChild(div);
+  }
   el.className = 'banner' + (kind === 'info' ? ' info' : '');
   el.hidden = false;
 }
@@ -49,6 +62,9 @@ function setBusy(busy) {
   state.busy = busy;
   $('scan').disabled = busy;
   $('deanonymize').disabled = busy;
+  for (const id of LOCKED_WHILE_BUSY) { $(id).disabled = busy; }
+  // #backup has its own enabled rule, so restore it rather than clobbering it.
+  $('backup').disabled = busy || !$('backup-enabled').checked;
   $('cancel').hidden = !busy;
   $('progress').hidden = !busy;
   if (busy) {
@@ -81,6 +97,7 @@ function onProgress(p) {
 
 function addFiles(paths) {
   if (!paths || !paths.length) { return; }
+  if (state.busy) { return; }
   for (const p of paths) {
     if (p && state.files.indexOf(p) === -1) { state.files.push(p); }
   }
@@ -90,6 +107,7 @@ function addFiles(paths) {
 }
 
 function removeFile(path) {
+  if (state.busy) { return; }
   state.files = state.files.filter((p) => p !== path);
   invalidateScan();
   renderFiles();
@@ -105,7 +123,7 @@ function renderFiles() {
     label.title = path;
     const remove = document.createElement('button');
     remove.type = 'button';
-    remove.textContent = '×';
+    remove.textContent = '\u00d7';
     remove.setAttribute('aria-label', 'Remove ' + basename(path));
     remove.addEventListener('click', () => removeFile(path));
     li.append(label, remove);
@@ -191,7 +209,18 @@ async function doScan() {
     state.reviewTruncated = !!res.review_truncated;
     state.approved = new Set(state.review.map((c) => c.id));
     if (!$('root').value && res.root) { $('root').value = res.root; }
-    for (const w of res.warnings || []) { banner(w, 'info'); }
+    if ((res.warnings || []).length) { banner(res.warnings, 'info'); }
+    if (res.cancelled) {
+      // The preview stops at whatever file the cancel landed on, and the files
+      // after it were never examined. Offering to write from an incomplete
+      // preview would report success over files that still contain PII.
+      banner(`Scan cancelled after ${res.counts.files} file(s). The preview is incomplete, so nothing will be written. Scan again to anonymize.`, 'info');
+      return;
+    }
+    if (state.reviewTotal === 0 && res.counts.auto === 0) {
+      banner(`Nothing to anonymize: no values were detected in ${res.counts.files} file(s). No files were changed.`, 'info');
+      return;
+    }
     if (state.reviewTotal > 0) {
       openReview(res);
     } else {
@@ -228,7 +257,6 @@ async function doApply(approvedIds, approveAll) {
     const res = await api().apply(state.scanId, approvedIds, opts);
     state.scanId = null;
     if (!res.ok) { banner(res.error); return; }
-    banner('');
     renderReport(res, 'anonymize');
   } finally {
     setBusy(false);
@@ -258,7 +286,7 @@ function openReview(scan) {
   const truncated = $('review-truncated');
   if (state.reviewTruncated) {
     truncated.textContent =
-      `Showing the first ${state.review.length} of ${state.reviewTotal}. "Approve all" still covers every one of them.`;
+      `Showing the first ${state.review.length} of ${state.reviewTotal}. "Approve all" covers every one of them, but if you untick any row the ${state.reviewTotal - state.review.length} not shown will all be left in place.`;
     truncated.hidden = false;
   } else {
     truncated.hidden = true;
@@ -536,6 +564,14 @@ function bind() {
   $('review-cancel').addEventListener('click', () => $('review').close());
   $('review-apply').addEventListener('click', async () => {
     const approveAll = state.reviewTruncated && state.approved.size === state.review.length;
+    if (state.reviewTruncated && !approveAll) {
+      const unseen = state.reviewTotal - state.review.length;
+      const ok = window.confirm(
+        `${unseen} detection(s) beyond the ${state.review.length} shown were never displayed.\n\n` +
+        'Because you changed the selection, all of them will be LEFT IN PLACE and will still ' +
+        'appear in the written files.\n\nContinue anyway?');
+      if (!ok) { return; }
+    }
     $('review').close();
     await doApply([...state.approved], approveAll);
   });
@@ -556,23 +592,27 @@ async function browse(kind) {
 }
 
 async function chooseMapping() {
+  if (!api()) { return; }
   const suggested = $('mapping').value ? basename($('mapping').value) : 'thickanon-mapping.json';
   const res = await api().pick_mapping(suggested);
   if (res && res.ok && res.path) { $('mapping').value = res.path; }
 }
 
 async function chooseBackup() {
+  if (!api()) { return; }
   const res = await api().pick_backup();
   if (res && res.ok && res.paths && res.paths.length) { $('backup').value = res.paths[0]; }
 }
 
 async function downloadModel() {
+  if (!api()) { return; }
   banner('Downloading the GLiNER model. This can take several minutes.', 'info');
   const res = await api().download_model();
   banner(res.ok ? 'GLiNER model is ready.' : res.error, res.ok ? 'info' : '');
 }
 
 async function start() {
+  state.started = true;
   bind();
   renderFiles();
   if (!api()) {
@@ -612,4 +652,12 @@ if (window.pywebview) {
   start();
 } else {
   window.addEventListener('pywebviewready', start);
+  // pywebview injects its bridge after this script runs, so the listener above
+  // is the normal path. If it never fires the page is inert, and saying so is
+  // better than leaving every control silently dead.
+  setTimeout(() => {
+    if (!state.started) {
+      banner('This page is not running inside the thickAnonymizer app, so nothing on it will work. Launch thickAnonymizer.exe instead.');
+    }
+  }, 3000);
 }
