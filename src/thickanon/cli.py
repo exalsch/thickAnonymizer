@@ -82,6 +82,12 @@ def main(argv=None) -> int:
         return 0
 
     mapping = MappingStore.load(ns.mapping, passphrase=ns.passphrase)
-    deanonymize_paths(_expand(ns.paths), mapping)
-    print("Deanonymized.")
+    report = deanonymize_paths(_expand(ns.paths), mapping)
+    print(report.summary())
+    if report.unknown_tokens:
+        print(
+            "WARNING: some tokens had no entry in this mapping. Check that you "
+            "loaded the mapping produced by the same anonymize run.",
+            file=sys.stderr,
+        )
     return 0

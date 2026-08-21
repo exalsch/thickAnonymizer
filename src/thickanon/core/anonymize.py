@@ -1,4 +1,5 @@
 import re as _re
+from collections import Counter
 
 from thickanon.core.types import Entity
 from thickanon.core.mapping import MappingStore
@@ -15,8 +16,28 @@ def apply_tokens(text: str, entities: list[Entity], mapping: MappingStore) -> st
     return text
 
 
-def deanonymize(text: str, mapping: MappingStore) -> str:
+def deanonymize_counted(text: str, mapping: MappingStore) -> tuple[str, int, Counter]:
+    """Restore tokens and report what happened.
+
+    Returns (new_text, tokens_restored, unknown_tokens). A token with no mapping
+    entry is left verbatim and counted as unknown: it means the caller loaded
+    the wrong mapping file, which used to fail silently.
+    """
+    restored = 0
+    unknown: Counter = Counter()
+
     def repl(match):
-        original = mapping.value_for(match.group())
-        return original if original is not None else match.group()
-    return _TOKEN_RE.sub(repl, text)
+        nonlocal restored
+        token = match.group()
+        original = mapping.value_for(token)
+        if original is None:
+            unknown[token] += 1
+            return token
+        restored += 1
+        return original
+
+    return _TOKEN_RE.sub(repl, text), restored, unknown
+
+
+def deanonymize(text: str, mapping: MappingStore) -> str:
+    return deanonymize_counted(text, mapping)[0]

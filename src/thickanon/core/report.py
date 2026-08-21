@@ -36,3 +36,44 @@ class BatchReport:
         if self.residual_total:
             lines.append(f"  RESIDUAL LEAKS FLAGGED: {self.residual_total}")
         return "\n".join(lines)
+
+
+class DeanonReport:
+    def __init__(self):
+        self.files = {}
+        self.unknown_tokens = Counter()
+        self.skipped = {}
+
+    def record_file(self, path, restored, unknown=None):
+        self.files[str(path)] = restored
+        if unknown:
+            self.unknown_tokens.update(unknown)
+
+    def record_skip(self, path, reason):
+        self.skipped[str(path)] = reason
+
+    def total_restored(self) -> int:
+        return sum(self.files.values())
+
+    def to_dict(self) -> dict:
+        return {
+            "files": self.files,
+            "unknown_tokens": dict(self.unknown_tokens),
+            "skipped": self.skipped,
+            "total_restored": self.total_restored(),
+        }
+
+    def summary(self) -> str:
+        lines = [
+            f"Tokens restored: {self.total_restored()} "
+            f"across {len(self.files)} file(s), skipped: {len(self.skipped)}"
+        ]
+        if self.unknown_tokens:
+            shown = ", ".join(sorted(self.unknown_tokens)[:5])
+            lines.append(
+                f"  UNKNOWN TOKENS: {sum(self.unknown_tokens.values())} "
+                f"({shown}) - this mapping does not match these files"
+            )
+        for path, reason in self.skipped.items():
+            lines.append(f"  skipped {path}: {reason}")
+        return "\n".join(lines)

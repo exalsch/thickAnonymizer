@@ -1,9 +1,10 @@
+from collections import Counter
 from pathlib import Path
 
 from thickanon.core.types import AnonymizeConfig
 from thickanon.core.mapping import MappingStore
-from thickanon.core.anonymize import deanonymize
-from thickanon.core.report import BatchReport
+from thickanon.core.anonymize import deanonymize_counted
+from thickanon.core.report import BatchReport, DeanonReport
 from thickanon.core.plan import apply_scan, scan_paths
 from thickanon.io.registry import get_handler, UnsupportedFileType
 
@@ -69,12 +70,38 @@ def anonymize_paths(paths, root, mapping: MappingStore, config: AnonymizeConfig,
     return apply_scan(scan, mapping, approved, backup_root)
 
 
-def deanonymize_paths(paths, mapping: MappingStore) -> None:
-    for path in paths:
-        path = Path(path)
+def deanonymize_paths(paths, mapping: MappingStore, progress=None, cancel=None) -> DeanonReport:
+    report = DeanonReport()
+    paths = [Path(p) for p in paths]
+    total = len(paths)
+    for done, path in enumerate(paths, start=1):
+        if cancel is not None and cancel():
+            report.record_skip(path, "cancelled: not processed")
+            if progress is not None:
+                progress(done, total, str(path), "deanonymize")
+            continue
         try:
             handler = get_handler(path)
-        except UnsupportedFileType:
+        except UnsupportedFileType as exc:
+            report.record_skip(path, f"unsupported: {exc}")
+            if progress is not None:
+                progress(done, total, str(path), "deanonymize")
             continue
-        frags = handler.read_fragments(path)
-        handler.write_fragments(path, [deanonymize(f, mapping) for f in frags])
+        try:
+            fragments = handler.read_fragments(path)
+            new_fragments, restored, unknown = [], 0, Counter()
+            for fragment in fragments:
+                new_text, count, missing = deanonymize_counted(fragment, mapping)
+                new_fragments.append(new_text)
+                restored += count
+                unknown.update(missing)
+            handler.write_fragments(path, new_fragments)
+        except Exception as exc:
+            report.record_skip(path, f"error: {exc}")
+            if progress is not None:
+                progress(done, total, str(path), "deanonymize")
+            continue
+        report.record_file(path, restored, unknown)
+        if progress is not None:
+            progress(done, total, str(path), "deanonymize")
+    return report
