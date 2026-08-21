@@ -3249,6 +3249,11 @@ Check, and note the result next to this step:
 5. Press **De-anonymize** with the saved mapping. The report shows the restored count.
 6. Toggle the theme. Both schemes are legible.
 
+**Observed result (2026-08-21, Task 10 documentation pass):** OUTSTANDING - not yet run.
+This is an interactive manual walkthrough of the live desktop window; nobody has
+performed it. Left unchecked deliberately. The automated suite and the CLI path have
+been exercised (see Task 9 Step 10 below), but this interactive GUI walkthrough has not.
+
 - [ ] **Step 5: Commit**
 
 ```bash
@@ -3553,14 +3558,19 @@ Write-Host "SHA256: $hash"
 Run: `./venv/Scripts/python.exe -m pytest tests/test_packaging.py -q`
 Expected: all pass.
 
-- [ ] **Step 9: Build the exe**
+- [x] **Step 9: Build the exe**
 
 Run: `powershell -ExecutionPolicy Bypass -File packaging\build.ps1`
 Expected: `dist/thickAnonymizer.exe` exists; the script prints its size (roughly 590 MB) and SHA256.
 
 If PyInstaller reports `Splash` is undefined, the installed PyInstaller predates splash support. Check with `./venv/Scripts/python.exe -m PyInstaller --version` (6.22.2 supports it) before changing the spec.
 
-- [ ] **Step 10: Smoke-test the exe**
+**Observed result:** Built successfully. `dist/thickAnonymizer.exe` exists at
+**488.2 MB** (not the ~590 MB estimated above; that figure was an estimate and the
+measured size is the one to trust going forward). SHA256:
+`5018B0E45A77D99A2E1CA8344C2D79197CBB5CC699B5097D8FCD2B314531750F`.
+
+- [x] **Step 10: Smoke-test the exe**
 
 Run each of these and record the result next to this step:
 
@@ -3572,6 +3582,13 @@ dist\thickAnonymizer.exe anon _sandbox\data --root _sandbox\data --mapping _sand
 Expected: the CLI prints help and then a report, the shell waits for it, and the exit code is 0.
 
 Then double-click `dist\thickAnonymizer.exe` in Explorer. Expected: the splash appears within a second or two, the window replaces it, no console window remains, and a scan/review/apply cycle works exactly as it did from the checkout.
+
+**Observed result:** CLI half PASSED - `--help`, `anon` and `deanon` all exit 0 from the
+built exe, and a round-trip anonymize/de-anonymize restored every token. GUI half
+OUTSTANDING - the double-click launch of `dist\thickAnonymizer.exe` has not been
+performed by anyone; this is the one thing about the packaged app that remains
+unverified. Do not treat the desktop window as confirmed working from the exe until
+someone actually runs this step.
 
 - [ ] **Step 11: Commit**
 
