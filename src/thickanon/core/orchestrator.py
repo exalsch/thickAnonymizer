@@ -26,6 +26,21 @@ def ensure_mapping_outside_root(mapping_path, root) -> None:
         )
 
 
+def ensure_backup_outside_root(backup_root, root) -> None:
+    """Guard: the backup folder must live OUTSIDE the root being anonymized.
+
+    A backup inside root is anonymized by the next run over that root, which
+    destroys the only copy of the originals. Raises ValueError on violation.
+    """
+    bp = Path(backup_root).resolve()
+    rt = Path(root).resolve()
+    if bp == rt or rt in bp.parents:
+        raise ValueError(
+            f"backup folder must be outside the root folder: {bp} is inside {rt}. "
+            "Choose a backup folder in a different directory."
+        )
+
+
 def _approved_ids_from_callback(scan, review_callback) -> set:
     """Replay the legacy per-fragment review callback against a scan.
 
