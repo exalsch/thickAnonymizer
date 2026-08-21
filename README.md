@@ -42,7 +42,9 @@ The app works in three steps.
    confident about are listed with the value highlighted in its surrounding text, so
    you approve or reject them in one pass.
 3. **Apply.** The approved replacements are written, originals are copied to the
-   backup folder first, and the mapping is saved. The report shows per-file counts,
+   backup folder first, and the mapping is saved. A backup is never overwritten: if
+   you run the tool twice over the same folder, the backup keeps the first original
+   it saw, which is the one you would actually want back. The report shows per-file counts,
    skipped files with reasons, and a loud warning if any email or IP pattern survived
    into the written files.
 

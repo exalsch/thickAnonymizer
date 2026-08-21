@@ -79,3 +79,26 @@ class MappingStore:
                 raise ValueError("wrong passphrase or corrupt mapping") from exc
             return cls.from_dict(json.loads(raw))
         return cls.from_dict(json.loads(data))
+
+    @classmethod
+    def load_or_new(cls, path, passphrase: str | None = None) -> "MappingStore":
+        """Continue an existing mapping, or start a fresh one if there is none.
+
+        Replacing an existing mapping would strand every token already written
+        into files by an earlier run: the counters restart at 1, so a new
+        [EMAIL_1] would mean a different value, and de-anonymizing those older
+        files would silently restore the wrong data. from_dict restores the
+        counters, so continuing is correct and keeps tokens stable across runs.
+        """
+        path = Path(path)
+        if not path.exists():
+            return cls()
+        try:
+            return cls.load(path, passphrase=passphrase)
+        except Exception as exc:
+            raise ValueError(
+                f"a mapping already exists at {path} and could not be opened ({exc}). "
+                "Anonymizing now would overwrite it and strand the tokens already "
+                "written into your earlier files. Use the passphrase that mapping was "
+                "saved with, or choose a different mapping path."
+            ) from exc

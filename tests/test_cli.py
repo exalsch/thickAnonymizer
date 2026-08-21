@@ -64,3 +64,45 @@ def test_cli_quick_review_warns(tmp_path, capsys):
     assert "WARNING" in err
     assert "quick_review" in err
     assert "uncertain" in err.lower() or "gray-band" in err.lower() or "gray" in err.lower()
+
+
+def test_cli_second_run_continues_the_mapping(tmp_path):
+    # Replacing the mapping would strand run 1's tokens: counters restart at 1,
+    # so run 2's [IP_1] would be a different address and de-anonymizing run 1's
+    # file would silently restore the wrong value.
+    root = tmp_path / "data"
+    root.mkdir()
+    a = root / "a.txt"
+    a.write_text("ping 10.0.0.7", encoding="utf-8")
+    mp = tmp_path / "map.json"
+
+    assert main(["anon", str(a), "--root", str(root), "--mapping", str(mp),
+                 "--mode", "auto_redact"]) == 0
+    first = a.read_text(encoding="utf-8")
+
+    b = root / "b.txt"
+    b.write_text("ping 10.9.9.9", encoding="utf-8")
+    assert main(["anon", str(b), "--root", str(root), "--mapping", str(mp),
+                 "--mode", "auto_redact"]) == 0
+    assert b.read_text(encoding="utf-8") != first  # a different token
+
+    assert main(["deanon", str(a), "--mapping", str(mp)]) == 0
+    assert a.read_text(encoding="utf-8") == "ping 10.0.0.7"  # the RIGHT value
+
+
+def test_cli_refuses_an_unopenable_existing_mapping(tmp_path):
+    root = tmp_path / "data"
+    root.mkdir()
+    a = root / "a.txt"
+    a.write_text("ping 10.0.0.7", encoding="utf-8")
+    mp = tmp_path / "map.json"
+
+    assert main(["anon", str(a), "--root", str(root), "--mapping", str(mp),
+                 "--mode", "auto_redact", "--passphrase", "right"]) == 0
+
+    b = root / "b.txt"
+    b.write_text("ping 10.9.9.9", encoding="utf-8")
+    rc = main(["anon", str(b), "--root", str(root), "--mapping", str(mp),
+               "--mode", "auto_redact", "--passphrase", "wrong"])
+    assert rc == 2
+    assert b.read_text(encoding="utf-8") == "ping 10.9.9.9"  # untouched

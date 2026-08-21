@@ -72,7 +72,11 @@ def main(argv=None) -> int:
                 kw["labels"] = [s.strip() for s in ns.gliner_labels.split(",") if s.strip()]
             gliner_cfg = GLiNERConfig(**kw)
         cfg = AnonymizeConfig(mode=ReviewMode(ns.mode), deny_list=ns.deny, gliner=gliner_cfg)
-        mapping = MappingStore()
+        try:
+            mapping = MappingStore.load_or_new(ns.mapping, passphrase=ns.passphrase)
+        except ValueError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 2
         report = anonymize_paths(_expand(ns.paths), Path(ns.root), mapping, cfg,
                                  backup_root=backup_root)
         mapping.save(ns.mapping, passphrase=ns.passphrase)

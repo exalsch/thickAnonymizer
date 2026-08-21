@@ -135,24 +135,9 @@ def preflight_mapping_target(mapping_path) -> None:
 def load_or_new_mapping(mapping_path, passphrase):
     """Continue an existing mapping rather than replacing it.
 
-    Replacing it would strand every token already written into files by an
-    earlier run: the counters restart at 1, so a new [EMAIL_1] means a
-    different person, and de-anonymizing those older files would silently
-    restore the wrong values. MappingStore.from_dict restores the counters,
-    so continuing is correct and also keeps tokens stable across runs.
+    See MappingStore.load_or_new for why replacing it would be unsafe.
     """
-    path = Path(mapping_path)
-    if not path.exists():
-        return MappingStore()
-    try:
-        return MappingStore.load(path, passphrase=passphrase)
-    except Exception as exc:
-        raise ValueError(
-            f"a mapping already exists at {path} and could not be opened ({exc}). "
-            "Anonymizing now would overwrite it and strand the tokens already "
-            "written into your earlier files. Use the passphrase that mapping was "
-            "saved with, or choose a different mapping path."
-        ) from exc
+    return MappingStore.load_or_new(mapping_path, passphrase=passphrase)
 
 
 def save_mapping_or_rescue(mapping, mapping_path, passphrase):

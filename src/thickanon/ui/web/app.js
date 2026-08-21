@@ -650,13 +650,24 @@ async function chooseMapping() {
   if (!api()) { return; }
   const suggested = $('mapping').value ? basename($('mapping').value) : 'thickanon-mapping.json';
   const res = await api().pick_mapping(suggested);
-  if (res && res.ok && res.path) { $('mapping').value = res.path; }
+  if (res && res.ok && res.path) {
+    $('mapping').value = res.path;
+    // Assigning .value fires no input event, so without this the path the
+    // user deliberately chose counts as untouched and adding one more file
+    // silently replaces it with the default.
+    $('mapping').dataset.userEdited = 'true';
+  }
 }
 
 async function chooseBackup() {
   if (!api()) { return; }
   const res = await api().pick_backup();
-  if (res && res.ok && res.paths && res.paths.length) { $('backup').value = res.paths[0]; }
+  if (res && res.ok && res.paths && res.paths.length) {
+    $('backup').value = res.paths[0];
+    // Same reason as chooseMapping: a programmatic assignment fires no
+    // input event, so the chosen folder must be marked as user-edited.
+    $('backup').dataset.userEdited = 'true';
+  }
 }
 
 async function downloadModel() {
@@ -676,14 +687,22 @@ async function start() {
     return;
   }
   const env = await api().environment();
-  state.env = env;
-  $('version').textContent = 'v' + env.version;
+  if (!env || !env.ok) {
+    // A failed probe must not abort start-up: the controls it gates default to
+    // unavailable, which is the safe direction on a build with no backend.
+    banner('Could not read the app environment: ' + ((env && env.error) || 'unknown error') +
+           '. Neural detection has been disabled as a precaution.');
+    state.env = { ok: false, version: '', gliner: { available: false, reason: 'The app environment could not be read.' } };
+  } else {
+    state.env = env;
+  }
+  $('version').textContent = 'v' + (state.env.version || '?');
 
   const advanced = $('advanced');
-  state.glinerAvailable = !!env.gliner.available;
+  state.glinerAvailable = !!state.env.gliner.available;
   if (!state.glinerAvailable) {
     advanced.dataset.unavailable = 'true';
-    $('gliner-note').textContent = env.gliner.reason;
+    $('gliner-note').textContent = state.env.gliner.reason;
     for (const id of GLINER_CONTROLS) { $(id).disabled = true; }
   } else {
     $('gliner-note').textContent = 'Slower and heavier than the default detector, but catches more names and organisations.';
@@ -694,7 +713,7 @@ async function start() {
   if (s.mode) { $('mode').value = s.mode; }
   if (s.deny) { $('deny').value = s.deny; }
   if (s.backup_enabled === false) { $('backup-enabled').checked = false; $('backup').disabled = true; }
-  if (s.gliner && env.gliner.available) { $('gliner').checked = true; }
+  if (s.gliner && state.env.gliner.available) { $('gliner').checked = true; }
   if (s.gliner_labels) { $('gliner-labels').value = s.gliner_labels; }
   if (s.gliner_threshold !== undefined && s.gliner_threshold !== null) {
     $('gliner-threshold').value = s.gliner_threshold;

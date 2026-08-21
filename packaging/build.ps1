@@ -35,7 +35,16 @@ $exe = Join-Path $root 'dist\thickAnonymizer.exe'
 if (-not (Test-Path $exe)) { throw "Build reported success but $exe is missing" }
 
 $sizeMb = [math]::Round((Get-Item $exe).Length / 1MB, 1)
-$hash = (Get-FileHash $exe -Algorithm SHA256).Hash
+# Windows PowerShell 5.1 does not ship Get-FileHash on every host, and the
+# script declares #Requires -Version 5.1, so compute the digest with .NET.
+$sha = [System.Security.Cryptography.SHA256]::Create()
+$stream = [System.IO.File]::OpenRead($exe)
+try {
+    $hash = [BitConverter]::ToString($sha.ComputeHash($stream)).Replace('-', '')
+} finally {
+    $stream.Dispose()
+    $sha.Dispose()
+}
 
 Write-Host ''
 Write-Host "Built:  $exe"

@@ -20,3 +20,19 @@ def test_reverse_lookup():
     tok = m.token_for("db.acme.local", "HOST")
     assert m.value_for(tok) == "db.acme.local"
     assert m.value_for("[HOST_999]") is None
+
+
+def test_load_or_new_continues_counters(tmp_path):
+    path = tmp_path / "m.json"
+    first = MappingStore()
+    assert first.token_for("jane@acme.com", "EMAIL") == "[EMAIL_1]"
+    first.save(path)
+
+    second = MappingStore.load_or_new(path)
+    assert second.token_for("bob@evil.com", "EMAIL") == "[EMAIL_2]"
+    assert second.value_for("[EMAIL_1]") == "jane@acme.com"
+
+
+def test_load_or_new_starts_fresh_when_absent(tmp_path):
+    store = MappingStore.load_or_new(tmp_path / "nope.json")
+    assert store.token_for("x@y.com", "EMAIL") == "[EMAIL_1]"
