@@ -1,125 +1,181 @@
-<!doctype html><html><head><meta charset="utf-8"><title>thickAnonymizer</title>
-<style>
- body{font-family:system-ui;margin:0;padding:24px;background:#0f1115;color:#e6e6e6}
- #drop{border:2px dashed #556;border-radius:12px;padding:36px;text-align:center;color:#99a}
- #drop.over{border-color:#6cf;color:#cdf}
- label{display:block;margin:10px 0 4px}
- input,select{width:100%;padding:8px;background:#1b1e26;color:#e6e6e6;border:1px solid #333;border-radius:6px;box-sizing:border-box}
- button{margin-top:8px;padding:10px 18px;border:0;border-radius:8px;background:#3b82f6;color:#fff;cursor:pointer}
- button.ghost{background:#2a2f3a}
- #files{max-height:120px;overflow:auto;font-size:12px;color:#9aa}
- #out{white-space:pre-wrap;margin-top:16px;background:#1b1e26;padding:12px;border-radius:8px}
- .row{display:flex;gap:12px}.row>div{flex:1}
- .field{display:flex;gap:8px;align-items:flex-end}.field>input{flex:1}
- .field>button{margin-top:0;white-space:nowrap}
- .hint{font-size:12px;color:#778;margin-top:4px}
-</style></head><body>
- <h2>thickAnonymizer</h2>
- <div id="drop">Drag files or a folder here</div>
- <div style="margin-top:8px">
-   <button class="ghost" onclick="browse('files')">Browse files…</button>
-   <button class="ghost" onclick="browse('folder')">Browse folder…</button>
- </div>
- <ul id="files"></ul>
- <div class="row">
-   <div><label>Mode</label><select id="mode">
-     <option value="quick_review">Quick review (default)</option>
-     <option value="auto_redact">Automatic — over-redact</option>
-     <option value="auto_skip">Automatic — skip uncertain</option>
-   </select></div>
-   <div><label>Root folder</label><input id="root" placeholder="(auto from selection)"></div>
- </div>
- <label>Mapping file <span class="hint">— must be OUTSIDE the root folder</span></label>
- <div class="field">
-   <input id="mapping" placeholder="(auto: beside the root folder)">
-   <button class="ghost" onclick="chooseMapping()">Choose…</button>
- </div>
- <div class="row">
-   <div><label>Deny-list (comma-separated)</label><input id="deny" placeholder="Project Falcon, acme"></div>
-   <div><label>Backup folder (optional)</label><input id="backup" placeholder=".backup"></div>
- </div>
- <label>Passphrase (optional, encrypts mapping)</label><input id="pass" type="password">
- <label><input type="checkbox" id="gliner"> Use neural NER (GLiNER, higher recall)</label>
- <div class="row">
-   <div><label>Labels (comma-separated)</label><input id="gliner_labels" placeholder="person, organization, email"></div>
-   <div><label>Threshold</label><input id="gliner_thr" type="number" step="0.05" value="0.5"></div>
- </div>
- <label><input type="checkbox" id="gliner_gpu"> Use GPU (needs CUDA build)</label>
- <button class="ghost" onclick="downloadModel()">Download GLiNER model</button>
- <div>
-   <button onclick="run('anonymize')">Anonymize</button>
-   <button onclick="run('deanonymize')" style="background:#10b981">Deanonymize</button>
- </div>
- <div id="out"></div>
-<script>
- let picked = [];
- const $ = id => document.getElementById(id);
- const drop = $('drop');
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>thickAnonymizer</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
 
- function showFiles(){
-   const ul = $('files'); ul.textContent = '';
-   for(const p of picked){ const li = document.createElement('li'); li.textContent = p; ul.appendChild(li); }
- }
+<header class="topbar">
+  <div class="brand">
+    <span class="mark" aria-hidden="true">TA</span>
+    <div>
+      <h1>thickAnonymizer</h1>
+      <p class="tagline">Replace sensitive values with readable tokens before sharing files with an AI tool.</p>
+    </div>
+  </div>
+  <div class="topbar-actions">
+    <span id="version" class="version"></span>
+    <button id="theme-toggle" class="btn ghost small" type="button">Theme</button>
+  </div>
+</header>
 
- // Fill root + mapping with sensible defaults when they're empty.
- async function applyDefaults(){
-   if(!picked.length) return;
-   const res = await window.pywebview.api.suggest_defaults(picked, $('root').value);
-   if(res && res.ok){
-     if(!$('root').value && res.root) $('root').value = res.root;
-     if(!$('mapping').value && res.mapping) $('mapping').value = res.mapping;
-   }
- }
+<div id="banner" class="banner" role="alert" hidden></div>
 
- drop.addEventListener('dragover', e=>{e.preventDefault();drop.classList.add('over')});
- drop.addEventListener('dragleave', ()=>drop.classList.remove('over'));
- drop.addEventListener('drop', async e=>{
-   e.preventDefault(); drop.classList.remove('over');
-   picked = [...e.dataTransfer.files].map(f=>f.path || f.name);
-   showFiles(); await applyDefaults();
- });
+<main>
 
- async function browse(kind){
-   const res = kind==='folder'
-     ? await window.pywebview.api.pick_folder()
-     : await window.pywebview.api.pick_files();
-   if(res && res.ok && res.paths && res.paths.length){
-     picked = res.paths;
-     showFiles(); await applyDefaults();
-   }
- }
+  <section class="card">
+    <h2><span class="step">1</span> Choose files</h2>
+    <div id="drop" class="dropzone">
+      <strong>Drag files or a folder here</strong>
+      <span class="muted">or use the buttons below</span>
+    </div>
+    <div class="btn-row">
+      <button id="browse-files" class="btn ghost" type="button">Browse files...</button>
+      <button id="browse-folder" class="btn ghost" type="button">Browse folder...</button>
+      <button id="clear-files" class="btn ghost" type="button" hidden>Clear all</button>
+      <span id="file-count" class="muted" aria-live="polite"></span>
+    </div>
+    <ul id="files" class="chips"></ul>
+  </section>
 
- async function chooseMapping(){
-   const res = await window.pywebview.api.pick_mapping('mapping.json');
-   if(res && res.ok && res.path) $('mapping').value = res.path;
- }
+  <section class="card">
+    <h2><span class="step">2</span> Settings</h2>
 
- async function run(kind){
-   const out = $('out'); out.textContent = 'Working…';
-   const mapping = $('mapping').value;
-   const pass = $('pass').value;
-   let res;
-   if(kind==='anonymize'){
-     res = await window.pywebview.api.anonymize(
-       picked, $('root').value, mapping, $('mode').value,
-       $('deny').value.split(',').map(s=>s.trim()).filter(Boolean),
-       $('backup').value || null, pass,
-       $('gliner').checked, $('gliner_labels').value, parseFloat($('gliner_thr').value)||0.5, $('gliner_gpu').checked);
-     if(res.ok){
-       // reflect the mapping path actually used (in case it was auto-defaulted)
-       if(res.mapping_path) $('mapping').value = res.mapping_path;
-       out.textContent = (res.summary || 'Done.') + '\n\nMapping saved to: ' + (res.mapping_path||mapping);
-     } else {
-       out.textContent = 'Error: ' + res.error;
-     }
-   } else {
-     res = await window.pywebview.api.deanonymize(picked, mapping, pass);
-     out.textContent = res.ok ? 'Deanonymized.' : ('Error: ' + res.error);
-   }
- }
- async function downloadModel(){
-   const out = $('out'); out.textContent = 'Downloading GLiNER model…';
-   const res = await window.pywebview.api.download_model();
-   out.textContent = res.ok ? 'GLiNER model ready.' : ('Error: ' + res.error);
- }
-</script></body></html>
+    <div class="grid">
+      <div class="field">
+        <label for="mode">Review mode</label>
+        <select id="mode">
+          <option value="quick_review">Quick review - I approve the uncertain ones</option>
+          <option value="auto_redact">Automatic - redact everything uncertain</option>
+          <option value="auto_skip">Automatic - skip everything uncertain</option>
+        </select>
+        <p class="hint">Quick review lists uncertain detections before anything is written.</p>
+      </div>
+      <div class="field">
+        <label for="root">Root folder</label>
+        <input id="root" type="text" placeholder="(worked out from your selection)" spellcheck="false">
+        <p class="hint">Paths in the mapping are recorded relative to this folder.</p>
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="mapping">Mapping file <span class="req">must be outside the root folder</span></label>
+      <div class="with-button">
+        <input id="mapping" type="text" placeholder="(auto: beside the root folder)" spellcheck="false">
+        <button id="choose-mapping" class="btn ghost" type="button">Choose...</button>
+      </div>
+      <p class="hint">This file is the reversible key. It is the sensitive artefact - keep it out of anything you share.</p>
+    </div>
+
+    <div class="field">
+      <label class="check">
+        <input id="backup-enabled" type="checkbox" checked>
+        <span>Back up the originals before editing</span>
+      </label>
+      <div class="with-button">
+        <input id="backup" type="text" placeholder="(auto: beside the root folder)" spellcheck="false">
+        <button id="choose-backup" class="btn ghost" type="button">Choose...</button>
+      </div>
+      <p class="hint">Files are edited in place. With backups off, the originals are gone.</p>
+    </div>
+
+    <div class="grid">
+      <div class="field">
+        <label for="pass">Passphrase <span class="muted">(optional, encrypts the mapping)</span></label>
+        <input id="pass" type="password" autocomplete="new-password">
+      </div>
+      <div class="field" id="pass-confirm-row" hidden>
+        <label for="pass-confirm">Confirm passphrase</label>
+        <input id="pass-confirm" type="password" autocomplete="new-password">
+        <p class="hint">A typo here cannot be recovered: the mapping would be unreadable.</p>
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="deny">Always replace these terms <span class="muted">(comma separated)</span></label>
+      <input id="deny" type="text" placeholder="Project Falcon, acme, contoso.local" spellcheck="false">
+    </div>
+
+    <details id="advanced">
+      <summary>Advanced: neural detection</summary>
+      <p id="gliner-note" class="hint"></p>
+      <label class="check">
+        <input id="gliner" type="checkbox">
+        <span>Use neural NER (GLiNER, higher recall, much slower)</span>
+      </label>
+      <div class="grid">
+        <div class="field">
+          <label for="gliner-labels">Labels <span class="muted">(comma separated)</span></label>
+          <input id="gliner-labels" type="text" placeholder="person, organization, email" spellcheck="false">
+        </div>
+        <div class="field">
+          <label for="gliner-threshold">Threshold</label>
+          <input id="gliner-threshold" type="number" min="0" max="1" step="0.05" value="0.5">
+        </div>
+      </div>
+      <label class="check">
+        <input id="gliner-gpu" type="checkbox">
+        <span>Use the GPU (needs a CUDA build of PyTorch)</span>
+      </label>
+      <button id="download-model" class="btn ghost" type="button">Download the GLiNER model</button>
+    </details>
+  </section>
+
+  <section class="card">
+    <h2><span class="step">3</span> Run</h2>
+    <div class="btn-row">
+      <button id="scan" class="btn primary" type="button">Scan and preview</button>
+      <button id="deanonymize" class="btn secondary" type="button">De-anonymize</button>
+      <button id="cancel" class="btn ghost" type="button" hidden>Cancel</button>
+    </div>
+    <p class="hint">Scanning reads and analyses your files but writes nothing. You see what will change before it happens.</p>
+
+    <div id="progress" class="progress" hidden>
+      <div class="progress-track"><div id="progress-bar" class="progress-bar"></div></div>
+      <p id="progress-label" class="muted" aria-live="polite"></p>
+      <p id="progress-file" class="path"></p>
+    </div>
+  </section>
+
+  <section id="report" class="card" hidden>
+    <h2>Result</h2>
+    <p id="report-residual" class="alert danger" hidden></p>
+    <div id="report-headline" class="headline"></div>
+    <div id="report-types" class="chips readonly"></div>
+    <h3>Files</h3>
+    <div class="table-wrap"><table id="report-files"></table></div>
+    <h3 id="report-skipped-h">Skipped</h3>
+    <div class="table-wrap"><table id="report-skipped"></table></div>
+    <div class="btn-row">
+      <button id="report-copy" class="btn ghost" type="button">Copy report</button>
+      <button id="report-save" class="btn ghost" type="button">Save report as JSON</button>
+    </div>
+  </section>
+
+</main>
+
+<dialog id="review">
+  <form method="dialog" class="review-shell">
+    <header class="review-head">
+      <h2>Uncertain detections</h2>
+      <p id="review-count" class="muted"></p>
+      <p id="review-truncated" class="alert warn" hidden></p>
+      <div class="btn-row">
+        <button id="review-approve-all" class="btn ghost" type="button">Approve all</button>
+        <button id="review-reject-all" class="btn ghost" type="button">Reject all</button>
+      </div>
+    </header>
+    <div id="review-groups" class="review-body"></div>
+    <footer class="review-foot">
+      <button id="review-cancel" class="btn ghost" type="button">Cancel</button>
+      <button id="review-apply" class="btn primary" type="button">Apply</button>
+    </footer>
+  </form>
+</dialog>
+
+<script src="app.js"></script>
+</body>
+</html>
