@@ -34,3 +34,54 @@ def test_every_web_asset_referenced_by_the_page_exists():
     html = (web / "index.html").read_text(encoding="utf-8")
     for name in ("app.css", "app.js"):
         assert name in html and (web / name).is_file()
+
+
+import ast
+
+
+def _spec_ast():
+    return ast.parse(SPEC.read_text(encoding="utf-8"))
+
+
+def _find_call(tree, func_name):
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == func_name:
+            return node
+    return None
+
+
+def test_exe_call_really_receives_the_splash():
+    # The substring tests pass if "Splash(" appears anywhere, a comment
+    # included. This checks the object is genuinely handed to EXE().
+    exe = _find_call(_spec_ast(), "EXE")
+    assert exe is not None, "the spec has no EXE(...) call"
+    args = [ast.unparse(a) for a in exe.args]
+    assert "splash" in args, args
+    assert "splash.binaries" in args, args
+
+
+def test_exe_argument_order_matches_pyinstallers_template():
+    # normalize_toc() dedups first-wins, so Analysis' binaries must come first.
+    exe = _find_call(_spec_ast(), "EXE")
+    args = [ast.unparse(a) for a in exe.args]
+    assert args.index("a.binaries") < args.index("splash"), args
+
+
+def test_excludes_really_lists_torch_and_transformers():
+    excludes = None
+    for node in ast.walk(_spec_ast()):
+        if isinstance(node, ast.Assign) and any(
+            isinstance(t, ast.Name) and t.id == "_EXCLUDES" for t in node.targets
+        ):
+            excludes = {ast.literal_eval(e) for e in node.value.elts}
+    assert excludes is not None, "the spec has no _EXCLUDES assignment"
+    assert {"torch", "transformers"} <= excludes, excludes
+
+
+def test_web_assets_are_real_string_literals_in_the_spec():
+    literals = {
+        n.value for n in ast.walk(_spec_ast())
+        if isinstance(n, ast.Constant) and isinstance(n.value, str)
+    }
+    for name in ("index.html", "app.css", "app.js"):
+        assert name in literals, f"{name} is not a string literal in the spec"

@@ -16,7 +16,7 @@ if (-not (Test-Path $python)) {
     throw "No virtualenv at $python. Create one and run: pip install -e `".[dev]`""
 }
 
-if (-not (Test-Path (Join-Path $root 'packaging\icon.ico'))) {
+if (-not ((Test-Path (Join-Path $root 'packaging\icon.ico')) -and (Test-Path (Join-Path $root 'packaging\splash.png')))) {
     Write-Host 'Generating icon and splash...'
     & $python (Join-Path $root 'packaging\make_icon.py')
 }

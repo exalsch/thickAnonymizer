@@ -66,7 +66,10 @@ splash = Splash(
     text_pos=None,
 )
 
-exe = EXE(pyz, a.scripts, splash, splash.binaries, a.binaries, a.datas,
+# Argument order follows PyInstaller's own --onefile --splash template:
+# Analysis' binaries must precede splash's, because normalize_toc() dedups
+# first-wins and Analysis' copy should win any filename collision.
+exe = EXE(pyz, a.scripts, a.binaries, a.datas, splash, splash.binaries,
           name="thickAnonymizer",
           console=True,
           icon=os.path.join(PKG, "icon.ico"),
