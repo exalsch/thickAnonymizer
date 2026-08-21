@@ -13,12 +13,14 @@ def test_api_anonymize_with_gliner(tmp_path, monkeypatch):
     monkeypatch.setattr(gliner_model, "load_model", lambda cfg: StubModel())
     root = tmp_path / "data"; root.mkdir()
     f = root / "n.txt"; f.write_text("John Carter at 10.0.0.3", encoding="utf-8")
-    res = Api().anonymize(files=[str(f)], root=str(root),
-                          mapping_path=str(tmp_path / "m.json"), mode="auto_redact",
-                          deny=[], backup_dir=None, passphrase=None,
-                          gliner=True, gliner_labels="person,location",
-                          gliner_threshold=0.4, gliner_gpu=False)
-    assert res["ok"] is True
+    api = Api()
+    scan = api.scan({"files": [str(f)], "root": str(root), "mode": "auto_redact",
+                     "gliner": True, "gliner_labels": "person,location",
+                     "gliner_threshold": 0.4, "gliner_gpu": False})
+    assert scan["ok"] is True, scan
+    res = api.apply(scan["scan_id"], [], {"mapping": str(tmp_path / "m.json"),
+                                          "backup_enabled": False})
+    assert res["ok"] is True, res
     assert "John Carter" not in f.read_text(encoding="utf-8")
 
 
