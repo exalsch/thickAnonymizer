@@ -7,7 +7,11 @@ of once per text fragment.
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from thickanon.core.anonymize import apply_tokens
+from thickanon.core.backup import backup_file
 from thickanon.core.decide import partition
+from thickanon.core.report import BatchReport
+from thickanon.core.residual import residual_scan
 from thickanon.core.types import AnonymizeConfig, Entity
 from thickanon.detectors.engine import detect
 from thickanon.io.registry import UnsupportedFileType, get_handler
@@ -182,3 +186,63 @@ def scan_paths(paths, root, config: AnonymizeConfig, progress=None, cancel=None)
             progress(done, total, str(path), "scan")
 
     return result
+
+
+def apply_scan(scan: ScanResult, mapping, approved_ids=None, backup_root=None,
+               progress=None, cancel=None) -> BatchReport:
+    """Write the scan's decisions to disk.
+
+    Auto-band candidates are always applied. Review-band candidates are applied
+    only when their id is in approved_ids; the rest are reported as flagged.
+    """
+    approved = set(approved_ids or ())
+    report = BatchReport()
+    for path, reason in scan.skipped.items():
+        report.record_skip(path, reason)
+
+    total = len(scan.files)
+    for done, file_scan in enumerate(scan.files, start=1):
+        if cancel is not None and cancel():
+            report.record_skip(file_scan.path, "cancelled: not processed")
+            if progress is not None:
+                progress(done, total, str(file_scan.path), "apply")
+            continue
+
+        selected, left = [], []
+        for candidate in file_scan.candidates:
+            if candidate.band == "auto" or candidate.id in approved:
+                selected.append(candidate)
+            else:
+                left.append(candidate)
+
+        try:
+            if backup_root is not None:
+                backup_file(file_scan.path, scan.root, backup_root)
+
+            by_fragment: dict[int, list[Entity]] = {}
+            for candidate in selected:
+                by_fragment.setdefault(candidate.fragment_index, []).append(candidate.entity)
+
+            new_fragments, residual_all = [], []
+            for index, fragment in enumerate(file_scan.fragments):
+                new_text = apply_tokens(fragment, by_fragment.get(index, []), mapping)
+                new_fragments.append(new_text)
+                residual_all += residual_scan(new_text)
+
+            get_handler(file_scan.path).write_fragments(file_scan.path, new_fragments)
+        except Exception as exc:
+            report.record_skip(file_scan.path, f"error: {exc}")
+            if progress is not None:
+                progress(done, total, str(file_scan.path), "apply")
+            continue
+
+        report.record_file(
+            file_scan.path,
+            [c.entity for c in selected],
+            [c.entity for c in left],
+            residual_all,
+        )
+        if progress is not None:
+            progress(done, total, str(file_scan.path), "apply")
+
+    return report

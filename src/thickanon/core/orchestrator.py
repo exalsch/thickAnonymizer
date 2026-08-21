@@ -2,12 +2,9 @@ from pathlib import Path
 
 from thickanon.core.types import AnonymizeConfig
 from thickanon.core.mapping import MappingStore
-from thickanon.core.decide import partition
-from thickanon.core.anonymize import apply_tokens, deanonymize
-from thickanon.core.residual import residual_scan
+from thickanon.core.anonymize import deanonymize
 from thickanon.core.report import BatchReport
-from thickanon.core.backup import backup_file
-from thickanon.detectors.engine import detect
+from thickanon.core.plan import apply_scan, scan_paths
 from thickanon.io.registry import get_handler, UnsupportedFileType
 
 
@@ -28,49 +25,48 @@ def ensure_mapping_outside_root(mapping_path, root) -> None:
         )
 
 
+def _approved_ids_from_callback(scan, review_callback) -> set:
+    """Replay the legacy per-fragment review callback against a scan.
+
+    The callback keeps its original contract:
+    review_callback(flagged, fragment_text, path) -> list[Entity].
+    Entity is a frozen dataclass, so the returned entities match candidates by
+    value and the id lookup is exact.
+    """
+    if review_callback is None:
+        return set()
+    approved = set()
+    for file_scan in scan.files:
+        by_fragment = {}
+        for candidate in file_scan.candidates:
+            if candidate.band == "review":
+                by_fragment.setdefault(candidate.fragment_index, []).append(candidate)
+        for fragment_index in sorted(by_fragment):
+            candidates = by_fragment[fragment_index]
+            chosen = review_callback(
+                [c.entity for c in candidates],
+                file_scan.fragments[fragment_index],
+                file_scan.path,
+            )
+            chosen = set(chosen or ())
+            approved.update(c.id for c in candidates if c.entity in chosen)
+    return approved
+
+
 def anonymize_paths(paths, root, mapping: MappingStore, config: AnonymizeConfig,
                     backup_root=None, review_callback=None) -> BatchReport:
     """Anonymize files in place.
+
+    Implemented as scan-then-apply: every file is read and analysed before any
+    file is written, so a failure while reading leaves the batch untouched.
 
     review_callback(flagged, fragment_text, path) -> list[Entity] is called in
     QUICK_REVIEW mode to let a UI choose which gray-band entities to apply. If
     None, gray-band entities are NOT applied (safe default for headless).
     """
-    report = BatchReport()
-    for path in paths:
-        path = Path(path)
-        try:
-            handler = get_handler(path)
-        except UnsupportedFileType as exc:
-            report.record_skip(path, f"unsupported: {exc}")
-            continue
-
-        try:
-            if backup_root is not None:
-                backup_file(path, root, backup_root)
-
-            fragments = handler.read_fragments(path)
-            new_fragments, applied_all, flagged_all, residual_all = [], [], [], []
-            for frag in fragments:
-                entities = detect(frag, config)
-                apply_now, flagged = partition(entities, config)
-                if flagged and review_callback is not None:
-                    approved = review_callback(flagged, frag, path)
-                    apply_now = apply_now + list(approved)
-                    flagged = [e for e in flagged if e not in approved]
-                new_text = apply_tokens(frag, apply_now, mapping)
-                residual = residual_scan(new_text)
-                new_fragments.append(new_text)
-                applied_all += apply_now
-                flagged_all += flagged
-                residual_all += residual
-            handler.write_fragments(path, new_fragments)
-        except Exception as exc:
-            # One bad file must not abort the whole batch: record it and move on.
-            report.record_skip(path, f"error: {exc}")
-            continue
-        report.record_file(path, applied_all, flagged_all, residual_all)
-    return report
+    scan = scan_paths(paths, root, config)
+    approved = _approved_ids_from_callback(scan, review_callback)
+    return apply_scan(scan, mapping, approved, backup_root)
 
 
 def deanonymize_paths(paths, mapping: MappingStore) -> None:

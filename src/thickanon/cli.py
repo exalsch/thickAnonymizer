@@ -11,15 +11,10 @@ from thickanon.core.orchestrator import (
 )
 
 
-def _expand(paths) -> list[Path]:
-    out = []
-    for p in paths:
-        p = Path(p)
-        if p.is_dir():
-            out.extend(f for f in p.rglob("*") if f.is_file())
-        else:
-            out.append(p)
-    return out
+from thickanon.core.plan import expand_paths
+
+# Kept as a module-level name because ui/api.py and older callers import it.
+_expand = expand_paths
 
 
 def main(argv=None) -> int:

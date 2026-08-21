@@ -150,3 +150,124 @@ def test_candidate_to_dict_is_json_safe(tmp_path):
     json.dumps(payload)  # must not raise
     assert set(payload) >= {"id", "type", "score", "text", "context",
                             "context_start", "context_end", "band", "file_index"}
+
+
+from thickanon.core.mapping import MappingStore
+from thickanon.core.plan import apply_scan
+
+
+def test_apply_writes_auto_candidates_only_by_default(tmp_path):
+    f = _write(tmp_path / "note.txt", "mail jane@acme.com about intranet.example.com")
+    scan = scan_paths([f], tmp_path, AnonymizeConfig(mode=ReviewMode.QUICK_REVIEW))
+    report = apply_scan(scan, MappingStore())
+
+    out = f.read_text(encoding="utf-8")
+    assert "jane@acme.com" not in out           # EMAIL scores 0.9 -> auto band
+    assert "intranet.example.com" in out        # HOST scores 0.6 -> review band, unapproved
+    assert report.files[str(f)]["flagged_count"] == 1
+
+
+def test_apply_writes_approved_review_candidates(tmp_path):
+    f = _write(tmp_path / "note.txt", "see intranet.example.com for details")
+    scan = scan_paths([f], tmp_path, AnonymizeConfig(mode=ReviewMode.QUICK_REVIEW))
+    approved = [c.id for c in scan.review_candidates()]
+    assert approved, "the fixture must produce a review-band candidate"
+
+    apply_scan(scan, MappingStore(), approved_ids=approved)
+    assert "intranet.example.com" not in f.read_text(encoding="utf-8")
+
+
+def test_apply_ignores_unknown_ids(tmp_path):
+    f = _write(tmp_path / "note.txt", "see intranet.example.com for details")
+    scan = scan_paths([f], tmp_path, AnonymizeConfig(mode=ReviewMode.QUICK_REVIEW))
+    apply_scan(scan, MappingStore(), approved_ids=["f9:g9:0:1:NOPE"])
+    assert "intranet.example.com" in f.read_text(encoding="utf-8")
+
+
+def test_apply_carries_scan_skips_into_the_report(tmp_path):
+    img = tmp_path / "pic.png"
+    img.write_bytes(b"\x89PNG")
+    scan = scan_paths([img], tmp_path, AnonymizeConfig())
+    report = apply_scan(scan, MappingStore())
+    assert str(img) in report.skipped
+
+
+def test_apply_backs_up_before_writing(tmp_path):
+    root = tmp_path / "data"
+    f = _write(root / "note.txt", "ping 10.0.0.5")
+    backup = tmp_path / "backup"
+    scan = scan_paths([f], root, AnonymizeConfig(mode=ReviewMode.AUTO_REDACT))
+    apply_scan(scan, MappingStore(), backup_root=backup)
+
+    assert (backup / "note.txt").read_text(encoding="utf-8") == "ping 10.0.0.5"
+    assert "10.0.0.5" not in f.read_text(encoding="utf-8")
+
+
+def test_apply_reports_progress_and_honours_cancel(tmp_path):
+    a = _write(tmp_path / "a.txt", "ping 10.0.0.1")
+    b = _write(tmp_path / "b.txt", "ping 10.0.0.2")
+    scan = scan_paths([a, b], tmp_path, AnonymizeConfig(mode=ReviewMode.AUTO_REDACT))
+
+    seen = []
+    apply_scan(scan, MappingStore(),
+               progress=lambda done, total, path, stage: seen.append((done, total, stage)))
+    assert seen == [(1, 2, "apply"), (2, 2, "apply")]
+
+    # a cancelled run leaves the files untouched and says so in the report
+    c = _write(tmp_path / "c.txt", "ping 10.0.0.3")
+    scan2 = scan_paths([c], tmp_path, AnonymizeConfig(mode=ReviewMode.AUTO_REDACT))
+    report = apply_scan(scan2, MappingStore(), cancel=lambda: True)
+    assert c.read_text(encoding="utf-8") == "ping 10.0.0.3"
+    assert "cancelled" in report.skipped[str(c)]
+
+
+def test_apply_records_write_failure_and_continues(tmp_path, monkeypatch):
+    a = _write(tmp_path / "a.txt", "ping 10.0.0.1")
+    b = _write(tmp_path / "b.txt", "ping 10.0.0.2")
+    scan = scan_paths([a, b], tmp_path, AnonymizeConfig(mode=ReviewMode.AUTO_REDACT))
+
+    import thickanon.io.text as text_handler
+
+    real_write = text_handler.write_fragments
+
+    def flaky_write(path, fragments):
+        if Path(path).name == "a.txt":
+            raise OSError("disk full")
+        return real_write(path, fragments)
+
+    monkeypatch.setattr(text_handler, "write_fragments", flaky_write)
+
+    report = apply_scan(scan, MappingStore())
+    assert "disk full" in report.skipped[str(a)]
+    assert str(b) in report.files
+    assert "10.0.0.2" not in b.read_text(encoding="utf-8")
+
+
+def test_review_callback_still_drives_anonymize_paths(tmp_path):
+    from thickanon.core.orchestrator import anonymize_paths
+
+    f = _write(tmp_path / "note.txt", "see intranet.example.com for details")
+    seen = {}
+
+    def approve_everything(flagged, fragment_text, path):
+        seen["fragment"] = fragment_text
+        seen["path"] = Path(path)
+        return list(flagged)
+
+    anonymize_paths([f], tmp_path, MappingStore(),
+                    AnonymizeConfig(mode=ReviewMode.QUICK_REVIEW),
+                    review_callback=approve_everything)
+
+    assert seen["path"] == f
+    assert seen["fragment"] == "see intranet.example.com for details"
+    assert "intranet.example.com" not in f.read_text(encoding="utf-8")
+
+
+def test_review_callback_rejecting_leaves_the_text(tmp_path):
+    from thickanon.core.orchestrator import anonymize_paths
+
+    f = _write(tmp_path / "note.txt", "see intranet.example.com for details")
+    anonymize_paths([f], tmp_path, MappingStore(),
+                    AnonymizeConfig(mode=ReviewMode.QUICK_REVIEW),
+                    review_callback=lambda flagged, text, path: [])
+    assert "intranet.example.com" in f.read_text(encoding="utf-8")
