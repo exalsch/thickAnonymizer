@@ -18,7 +18,12 @@ def test_main_no_args_launches_gui(monkeypatch):
     # No args -> GUI path; we stub out the window so nothing actually opens.
     calls = {}
     import thickanon.ui.app as app
-    monkeypatch.setattr(app, "run", lambda: calls.setdefault("ran", True))
+
+    def fake_run():
+        calls["ran"] = True
+        return 0  # run() -> int; main() now propagates this exit code.
+
+    monkeypatch.setattr(app, "run", fake_run)
     # _hide_console_on_windows is a no-op off Windows; safe to call directly.
     rc = main([])
     assert rc == 0

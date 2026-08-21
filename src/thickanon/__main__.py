@@ -37,8 +37,7 @@ def main(argv=None) -> int:
     _hide_console_on_windows()
     from thickanon.ui.app import run
 
-    run()
-    return 0
+    return run()
 
 
 if __name__ == "__main__":
