@@ -30,3 +30,4 @@ Thumbs.db
 
 # Local scratch / sandbox (test data, sample mappings, ad-hoc runs)
 _sandbox/
+.superpowers/

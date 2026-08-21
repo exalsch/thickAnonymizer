@@ -1118,7 +1118,8 @@ git commit -m "feat(core): backup path resolution and outside-root guard"
   - `environment() -> {"ok", "version", "platform", "gliner": {"available", "reason"}}`
   - `pick_files() / pick_folder() -> {"ok", "paths"}`
   - `pick_mapping(suggested_name) -> {"ok", "path"}`
-  - `pick_backup() -> {"ok", "path"}`
+  - `pick_backup() -> {"ok", "paths"}` (delegates to `pick_folder`)
+  - `save_report(report, suggested_name="thickanon-report.json") -> {"ok", "path"}`
   - `suggest_defaults(files, root="") -> {"ok", "root", "mapping", "backup"}`
   - `scan(opts) -> {"ok", "scan_id", "root", "counts", "review", "review_total", "review_truncated", "files", "skipped", "warnings", "cancelled"}`
   - `apply(scan_id, approved_ids, opts) -> {"ok", "summary", "report", "mapping_path", "backup_root"}`
@@ -1357,6 +1358,23 @@ def test_suggest_defaults_includes_a_backup_path(tmp_path):
     assert Path(res["backup"]).resolve() == default_backup_for_root(root)
 
 
+def test_save_report_needs_a_window():
+    result = Api().save_report({"totals": {}}, "r.json")
+    assert result["ok"] is False
+
+
+def test_save_report_writes_json(tmp_path):
+    class FakeWindow:
+        def create_file_dialog(self, *_args, **_kwargs):
+            return (str(tmp_path / "r.json"),)
+
+    api = Api()
+    api.window = FakeWindow()
+    result = api.save_report({"totals": {"IP": 2}}, "r.json")
+    assert result["ok"] is True
+    assert json.loads(Path(result["path"]).read_text(encoding="utf-8")) == {"totals": {"IP": 2}}
+
+
 def test_on_files_dropped_records_paths():
     api = Api()
     result = api.on_files_dropped(["C:/a.txt", "", None, "C:/b.txt"])
@@ -1410,8 +1428,12 @@ from thickanon.detectors import gliner_model
 # page. Send a window of them and let the UI offer "approve all" for the rest.
 REVIEW_LIMIT = 2000
 
+# The allowlist is the security boundary for save_settings: a key that is not
+# here can never reach disk. "passphrase" is deliberately absent. Selection-
+# derived values (files, root, mapping, backup) are absent too: restoring them
+# on the next launch would fight the auto-fill from the new selection.
 SETTINGS_KEYS = (
-    "mode", "deny", "backup_enabled", "backup", "root", "mapping_dir",
+    "mode", "deny", "backup_enabled",
     "gliner", "gliner_labels", "gliner_threshold", "gliner_gpu", "theme",
 )
 
@@ -1546,6 +1568,22 @@ class Api:
 
     def pick_backup(self) -> dict:
         return self.pick_folder()
+
+    def save_report(self, report, suggested_name="thickanon-report.json") -> dict:
+        """Write a finished report to a file the user chooses."""
+        if self.window is None:
+            return {"ok": False, "error": "no window"}
+        result = self.window.create_file_dialog(
+            webview.FileDialog.SAVE, save_filename=suggested_name
+        )
+        if not result:
+            return {"ok": True, "path": ""}
+        path = Path(result[0] if isinstance(result, (list, tuple)) else result)
+        try:
+            path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+        return {"ok": True, "path": str(path)}
 
     # ----- defaults (pure logic; unit-testable) ----------------------------
     def suggest_defaults(self, files, root="") -> dict:
@@ -2730,13 +2768,18 @@ function collectOpts() {
 }
 
 function persistableSettings() {
-  const o = collectOpts();
-  delete o.files;
-  delete o.passphrase;
-  o.mapping_dir = $('mapping').value;
-  o.theme = document.documentElement.getAttribute('data-theme') || '';
-  delete o.mapping;
-  return o;
+  // Only preferences. Selection-derived paths and the passphrase are excluded
+  // here as well as by the allowlist in ui/api.py.
+  return {
+    mode: $('mode').value,
+    deny: $('deny').value,
+    backup_enabled: $('backup-enabled').checked,
+    gliner: $('gliner').checked,
+    gliner_labels: $('gliner-labels').value,
+    gliner_threshold: $('gliner-threshold').value,
+    gliner_gpu: $('gliner-gpu').checked,
+    theme: document.documentElement.getAttribute('data-theme') || ''
+  };
 }
 
 function passphraseProblem() {
@@ -3028,6 +3071,31 @@ function renderReport(res, kind) {
   $('report').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
+async function copyReport() {
+  if (!state.report) { return; }
+  const text = JSON.stringify(state.report, null, 2);
+  try {
+    await navigator.clipboard.writeText(text);
+    banner('Report copied to the clipboard.', 'info');
+  } catch (err) {
+    // Clipboard access can be refused in an embedded webview; fall back to a
+    // selection the user can copy with the keyboard.
+    const area = document.createElement('textarea');
+    area.value = text;
+    document.body.appendChild(area);
+    area.select();
+    banner('Could not reach the clipboard. The report is selected - press Ctrl+C.', 'info');
+    setTimeout(() => area.remove(), 15000);
+  }
+}
+
+async function saveReport() {
+  if (!state.report || !api()) { return; }
+  const res = await api().save_report(state.report, 'thickanon-report.json');
+  if (!res.ok) { banner(res.error); return; }
+  if (res.path) { banner('Report saved to: ' + res.path, 'info'); }
+}
+
 /* ---------- theme ---------- */
 
 function applyTheme(theme) {
@@ -3060,6 +3128,8 @@ function bind() {
   $('cancel').addEventListener('click', () => api() && api().cancel());
   $('download-model').addEventListener('click', downloadModel);
   $('theme-toggle').addEventListener('click', toggleTheme);
+  $('report-copy').addEventListener('click', copyReport);
+  $('report-save').addEventListener('click', saveReport);
 
   $('pass').addEventListener('input', () => {
     $('pass-confirm-row').hidden = $('pass').value === '';
