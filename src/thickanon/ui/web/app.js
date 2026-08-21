@@ -22,7 +22,8 @@ const state = {
   report: null,
   busy: false,
   startedAt: 0,
-  started: false
+  started: false,
+  glinerAvailable: true
 };
 
 const DETECTION_INPUTS = ['mode', 'deny', 'gliner', 'gliner-labels', 'gliner-threshold', 'gliner-gpu'];
@@ -32,6 +33,8 @@ const LOCKED_WHILE_BUSY = [
   'mode', 'root', 'mapping', 'backup-enabled', 'deny', 'pass', 'pass-confirm',
   'gliner', 'gliner-labels', 'gliner-threshold', 'gliner-gpu', 'download-model'
 ];
+
+const GLINER_CONTROLS = ['gliner', 'gliner-labels', 'gliner-threshold', 'gliner-gpu', 'download-model'];
 
 /* ---------- small helpers ---------- */
 
@@ -65,6 +68,12 @@ function setBusy(busy) {
   for (const id of LOCKED_WHILE_BUSY) { $(id).disabled = busy; }
   // #backup has its own enabled rule, so restore it rather than clobbering it.
   $('backup').disabled = busy || !$('backup-enabled').checked;
+  // The neural-NER controls are gated by what this build contains, not by
+  // whether a run is in flight. Re-enabling them here would let the user
+  // switch on a backend the exe does not ship.
+  if (!state.glinerAvailable) {
+    for (const id of GLINER_CONTROLS) { $(id).disabled = true; }
+  }
   $('cancel').hidden = !busy;
   $('progress').hidden = !busy;
   if (busy) {
@@ -209,16 +218,25 @@ async function doScan() {
     state.reviewTruncated = !!res.review_truncated;
     state.approved = new Set(state.review.map((c) => c.id));
     if (!$('root').value && res.root) { $('root').value = res.root; }
-    if ((res.warnings || []).length) { banner(res.warnings, 'info'); }
+    const notices = (res.warnings || []).slice();
     if (res.cancelled) {
       // The preview stops at whatever file the cancel landed on, and the files
       // after it were never examined. Offering to write from an incomplete
       // preview would report success over files that still contain PII.
-      banner(`Scan cancelled after ${res.counts.files} file(s). The preview is incomplete, so nothing will be written. Scan again to anonymize.`, 'info');
+      notices.push(`Scan cancelled after ${res.counts.files} file(s). The preview is incomplete, so nothing will be written. Scan again to anonymize.`);
+      banner(notices, 'info');
       return;
     }
+    if (notices.length) { banner(notices, 'info'); }
     if (state.reviewTotal === 0 && res.counts.auto === 0) {
-      banner(`Nothing to anonymize: no values were detected in ${res.counts.files} file(s). No files were changed.`, 'info');
+      const lines = [`Nothing to anonymize: no values were detected in ${res.counts.files} file(s). No files were changed.`];
+      const skipped = Object.entries(res.skipped || {});
+      if (skipped.length) {
+        lines.push(`${skipped.length} file(s) could not be read and were not examined at all:`);
+        for (const [path, why] of skipped.slice(0, 20)) { lines.push(`   ${path} - ${why}`); }
+        if (skipped.length > 20) { lines.push(`   ...and ${skipped.length - 20} more.`); }
+      }
+      banner(lines, 'info');
       return;
     }
     if (state.reviewTotal > 0) {
@@ -613,6 +631,7 @@ async function downloadModel() {
 
 async function start() {
   state.started = true;
+  banner('');
   bind();
   renderFiles();
   if (!api()) {
@@ -624,12 +643,11 @@ async function start() {
   $('version').textContent = 'v' + env.version;
 
   const advanced = $('advanced');
-  if (!env.gliner.available) {
+  state.glinerAvailable = !!env.gliner.available;
+  if (!state.glinerAvailable) {
     advanced.dataset.unavailable = 'true';
     $('gliner-note').textContent = env.gliner.reason;
-    for (const id of ['gliner', 'gliner-labels', 'gliner-threshold', 'gliner-gpu', 'download-model']) {
-      $(id).disabled = true;
-    }
+    for (const id of GLINER_CONTROLS) { $(id).disabled = true; }
   } else {
     $('gliner-note').textContent = 'Slower and heavier than the default detector, but catches more names and organisations.';
   }
