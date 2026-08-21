@@ -229,7 +229,9 @@ async function doScan() {
     }
     if (notices.length) { banner(notices, 'info'); }
     if (state.reviewTotal === 0 && res.counts.auto === 0) {
-      const lines = [`Nothing to anonymize: no values were detected in ${res.counts.files} file(s). No files were changed.`];
+      const lines = notices.concat([
+        `Nothing to anonymize: no values were detected in ${res.counts.files} file(s). No files were changed.`
+      ]);
       const skipped = Object.entries(res.skipped || {});
       if (skipped.length) {
         lines.push(`${skipped.length} file(s) could not be read and were not examined at all:`);
