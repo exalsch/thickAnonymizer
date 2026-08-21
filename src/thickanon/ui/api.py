@@ -99,12 +99,33 @@ def default_backup_for_root(root) -> Path:
     return _beside_root(root, ".thickanon-backup", "thickanon-backup")
 
 
+def preflight_mapping_target(mapping_path) -> None:
+    """Fail before any file is written if the mapping could not be saved after.
+
+    The mapping is the only key to the anonymized files. Discovering that its
+    destination is unwritable AFTER every file has been overwritten - which,
+    with backups off, is unrecoverable - is the worst possible ordering.
+    """
+    path = Path(mapping_path)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        probe = path.parent / f".thickanon-write-test-{uuid.uuid4().hex}"
+        probe.write_bytes(b"")
+        probe.unlink()
+    except Exception as exc:
+        raise ValueError(
+            f"the mapping file cannot be written to {path}: {exc}. "
+            "Choose a different mapping location before anonymizing."
+        ) from exc
+
+
 class Api:
     def __init__(self):
         self.window = None  # set by app.run() after the window is created
         self._scan = None
         self._scan_id = None
         self._cancel = threading.Event()
+        self._cancel_lock = threading.Lock()
 
     # ----- page -> python events -------------------------------------------
     def _emit(self, name: str, payload: dict) -> None:
@@ -255,8 +276,20 @@ class Api:
         return root_path.resolve()
 
     # ----- actions ----------------------------------------------------------
+    def _begin(self):
+        """Start a cancellable operation with its own flag.
+
+        Each operation gets a fresh Event so that starting one can never clear
+        a cancel aimed at another. pywebview runs every bridge call on its own
+        thread, so these really do overlap.
+        """
+        with self._cancel_lock:
+            self._cancel = threading.Event()
+            return self._cancel
+
     def cancel(self) -> dict:
-        self._cancel.set()
+        with self._cancel_lock:
+            self._cancel.set()
         return {"ok": True}
 
     def scan(self, opts) -> dict:
@@ -266,10 +299,10 @@ class Api:
             if not files:
                 return {"ok": False, "error": "No files selected."}
             root_path = self._root_from(opts, files)
-            self._cancel.clear()
+            cancel_event = self._begin()
             result = scan_paths(
                 expand_paths(files), root_path, self._config_from(opts),
-                progress=self._progress(), cancel=self._cancel.is_set,
+                progress=self._progress(), cancel=cancel_event.is_set,
             )
             self._scan = result
             self._scan_id = uuid.uuid4().hex
@@ -316,6 +349,7 @@ class Api:
             if not mapping_path:
                 mapping_path = str(default_mapping_for_root(root_path))
             ensure_mapping_outside_root(mapping_path, root_path)
+            preflight_mapping_target(mapping_path)
 
             backup_root = None
             if opts.get("backup_enabled", True):
@@ -330,17 +364,20 @@ class Api:
                 approved = {c.id for c in scan.review_candidates()}
 
             mapping = MappingStore()
-            self._cancel.clear()
-            report = apply_scan(
-                scan, mapping, approved, backup_root,
-                progress=self._progress(), cancel=self._cancel.is_set,
-            )
+            cancel_event = self._begin()
+            try:
+                report = apply_scan(
+                    scan, mapping, approved, backup_root,
+                    progress=self._progress(), cancel=cancel_event.is_set,
+                )
+            finally:
+                # Any write at all retires the preview: the files on disk no
+                # longer match the offsets this scan captured, so a second
+                # apply would corrupt them and would copy the already-
+                # anonymized files over the backup.
+                self._scan = None
+                self._scan_id = None
             mapping.save(mapping_path, passphrase=opts.get("passphrase") or None)
-
-            # The scan describes files that have now changed on disk; retiring it
-            # forces a fresh scan rather than a second apply over stale offsets.
-            self._scan = None
-            self._scan_id = None
 
             return {
                 "ok": True,
@@ -348,6 +385,7 @@ class Api:
                 "report": report.to_dict(),
                 "mapping_path": str(mapping_path),
                 "backup_root": str(backup_root) if backup_root else "",
+                "cancelled": cancel_event.is_set(),
             }
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
@@ -364,10 +402,10 @@ class Api:
                         "A mapping file is required to de-anonymize."}
             mapping = MappingStore.load(mapping_path,
                                         passphrase=opts.get("passphrase") or None)
-            self._cancel.clear()
+            cancel_event = self._begin()
             report = deanonymize_paths(
                 expand_paths(files), mapping,
-                progress=self._progress(), cancel=self._cancel.is_set,
+                progress=self._progress(), cancel=cancel_event.is_set,
             )
             return {"ok": True, "summary": report.summary(),
                     "report": report.to_dict()}

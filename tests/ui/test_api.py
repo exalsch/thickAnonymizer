@@ -167,6 +167,26 @@ def test_apply_rejects_backup_inside_root(tmp_path):
     })
     assert result["ok"] is False
     assert "outside the root" in result["error"]
+    assert "10.0.0.3" in f.read_text(encoding="utf-8")
+    assert not (root / ".backup").exists()
+
+
+def test_apply_refuses_an_unwritable_mapping_before_touching_any_file(tmp_path):
+    # The mapping is the only key. Discovering it cannot be saved after every
+    # file has been overwritten is unrecoverable when backups are off.
+    root, f = _root_with_file(tmp_path)
+    blocker = tmp_path / "blocker"
+    blocker.write_text("not a directory", encoding="utf-8")
+    api = Api()
+    scan = api.scan({"files": [str(f)], "root": str(root), "mode": "auto_redact"})
+    result = api.apply(scan["scan_id"], [], {
+        "mapping": str(blocker / "sub" / "m.json"),
+        "backup_enabled": False,
+    })
+
+    assert result["ok"] is False
+    assert "mapping file cannot be written" in result["error"]
+    assert "10.0.0.3" in f.read_text(encoding="utf-8")
 
 
 def test_apply_backs_up_by_default(tmp_path):
@@ -211,7 +231,7 @@ def test_deanonymize_without_a_mapping_is_refused(tmp_path):
 
 def test_errors_come_back_as_dicts_not_exceptions(tmp_path):
     api = Api()
-    result = api.deanonymize({"files": [], "mapping": str(tmp_path / "missing.json")})
+    result = api.deanonymize({"files": ["x.txt"], "mapping": str(tmp_path / "missing.json")})
     assert result["ok"] is False
     assert "error" in result
 

@@ -271,3 +271,27 @@ def test_review_callback_rejecting_leaves_the_text(tmp_path):
                     AnonymizeConfig(mode=ReviewMode.QUICK_REVIEW),
                     review_callback=lambda flagged, text, path: [])
     assert "intranet.example.com" in f.read_text(encoding="utf-8")
+
+
+def test_apply_refuses_a_file_that_changed_since_the_scan(tmp_path):
+    f = _write(tmp_path / "note.txt", "ping 10.0.0.5")
+    scan = scan_paths([f], tmp_path, AnonymizeConfig(mode=ReviewMode.AUTO_REDACT))
+    # the user edits the file while the preview is on screen
+    _write(tmp_path / "note.txt", "a much longer edit the user made, no PII here")
+
+    report = apply_scan(scan, MappingStore())
+
+    assert f.read_text(encoding="utf-8") == "a much longer edit the user made, no PII here"
+    assert "changed on disk" in report.skipped[str(f)]
+    assert str(f) not in report.files
+
+
+def test_apply_does_not_recreate_a_file_deleted_after_the_scan(tmp_path):
+    f = _write(tmp_path / "note.txt", "ping 10.0.0.5")
+    scan = scan_paths([f], tmp_path, AnonymizeConfig(mode=ReviewMode.AUTO_REDACT))
+    f.unlink()
+
+    report = apply_scan(scan, MappingStore())
+
+    assert not f.exists()
+    assert "changed on disk" in report.skipped[str(f)]

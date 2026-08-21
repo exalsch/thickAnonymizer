@@ -25,6 +25,9 @@ def test_api_anonymize_with_gliner(tmp_path, monkeypatch):
 
 
 def test_api_download_model(monkeypatch):
+    import thickanon.ui.api as api_module
+
+    monkeypatch.setattr(api_module, "gliner_availability", lambda: (True, ""))
     monkeypatch.setattr(gliner_model, "load_model", lambda cfg: object())
     res = Api().download_model()
     assert res["ok"] is True

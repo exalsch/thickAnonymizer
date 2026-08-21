@@ -36,6 +36,15 @@ def expand_paths(paths) -> list[Path]:
     return out
 
 
+def file_signature(path):
+    """A cheap change-detector for one file: (size, mtime_ns), or None."""
+    try:
+        st = Path(path).stat()
+        return (st.st_size, st.st_mtime_ns)
+    except OSError:
+        return None
+
+
 def make_candidate_id(file_index: int, fragment_index: int, entity: Entity) -> str:
     """A stable id for one detected span within one scan."""
     return f"f{file_index}:g{fragment_index}:{entity.start}:{entity.end}:{entity.entity_type}"
@@ -81,6 +90,7 @@ class Candidate:
 class FileScan:
     path: Path
     file_index: int
+    signature: tuple | None = None
     fragments: list[str] = field(default_factory=list)
     candidates: list[Candidate] = field(default_factory=list)
 
@@ -153,6 +163,7 @@ def scan_paths(paths, root, config: AnonymizeConfig, progress=None, cancel=None)
             continue
 
         try:
+            fragments_signature = file_signature(path)
             fragments = handler.read_fragments(path)
             file_index = len(result.files)
             candidates: list[Candidate] = []
@@ -175,7 +186,7 @@ def scan_paths(paths, root, config: AnonymizeConfig, progress=None, cancel=None)
                             )
                         )
             result.files.append(
-                FileScan(path=path, file_index=file_index,
+                FileScan(path=path, file_index=file_index, signature=fragments_signature,
                          fragments=fragments, candidates=candidates)
             )
         except Exception as exc:
@@ -204,6 +215,15 @@ def apply_scan(scan: ScanResult, mapping, approved_ids=None, backup_root=None,
     for done, file_scan in enumerate(scan.files, start=1):
         if cancel is not None and cancel():
             report.record_skip(file_scan.path, "cancelled: not processed")
+            if progress is not None:
+                progress(done, total, str(file_scan.path), "apply")
+            continue
+
+        if file_scan.signature is not None and file_signature(file_scan.path) != file_scan.signature:
+            # The preview describes content that is no longer on disk. Writing
+            # it back would silently discard whatever changed, or recreate a
+            # file the user deleted.
+            report.record_skip(file_scan.path, "changed on disk since the preview: not written")
             if progress is not None:
                 progress(done, total, str(file_scan.path), "apply")
             continue
