@@ -307,3 +307,80 @@ def test_gliner_threshold_of_zero_survives(tmp_path):
     cfg = api._config_from({"mode": "auto_redact", "gliner": True, "gliner_threshold": 0})
     assert cfg.gliner is not None
     assert cfg.gliner.threshold == 0
+
+
+def test_apply_refuses_a_mapping_path_that_is_a_folder(tmp_path):
+    root, f = _root_with_file(tmp_path)
+    folder = tmp_path / "not-a-file"
+    folder.mkdir()
+    api = Api()
+    scan = api.scan({"files": [str(f)], "root": str(root), "mode": "auto_redact"})
+    result = api.apply(scan["scan_id"], [], {"mapping": str(folder),
+                                             "backup_enabled": False})
+
+    assert result["ok"] is False
+    assert "is a folder" in result["error"]
+    assert "10.0.0.3" in f.read_text(encoding="utf-8")
+
+
+def test_apply_rescues_the_mapping_when_the_chosen_path_fails(tmp_path, monkeypatch):
+    # Once the files are rewritten the mapping is the only way back, so a save
+    # failure must produce a rescue copy and a loud warning, never a lost key.
+    import thickanon.ui.api as api_module
+    from thickanon.core.mapping import MappingStore as RealStore
+
+    root, f = _root_with_file(tmp_path)
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setattr(api_module.Path, "home", staticmethod(lambda: home))
+
+    real_save = RealStore.save
+    calls = {"n": 0}
+
+    def flaky_save(self, path, passphrase=None):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise OSError("device disappeared")
+        return real_save(self, path, passphrase=passphrase)
+
+    monkeypatch.setattr(RealStore, "save", flaky_save)
+
+    api = Api()
+    scan = api.scan({"files": [str(f)], "root": str(root), "mode": "auto_redact"})
+    result = api.apply(scan["scan_id"], [], {"mapping": str(tmp_path / "m.json"),
+                                             "backup_enabled": False})
+
+    assert result["ok"] is True, result
+    rescued = list(home.glob("thickanon-RESCUE-mapping-*.json"))
+    assert len(rescued) == 1
+    assert result["mapping_path"] == str(rescued[0])
+    assert "only way to reverse" in result["warning"]
+    # and the rescued mapping really does reverse the run
+    restored = api.deanonymize({"files": [str(f)], "mapping": result["mapping_path"]})
+    assert restored["ok"] is True
+    assert "10.0.0.3" in f.read_text(encoding="utf-8")
+
+
+def test_apply_reports_no_warning_on_the_happy_path(tmp_path):
+    root, f = _root_with_file(tmp_path)
+    api = Api()
+    scan = api.scan({"files": [str(f)], "root": str(root), "mode": "auto_redact"})
+    result = api.apply(scan["scan_id"], [], {"mapping": str(tmp_path / "m.json"),
+                                             "backup_enabled": False})
+    assert result["ok"] is True
+    assert result["warning"] == ""
+
+
+def test_a_rejected_backup_leaves_no_stray_mapping_directories(tmp_path):
+    root, f = _root_with_file(tmp_path)
+    api = Api()
+    scan = api.scan({"files": [str(f)], "root": str(root), "mode": "auto_redact"})
+    result = api.apply(scan["scan_id"], [], {
+        "mapping": str(tmp_path / "keys" / "deep" / "m.json"),
+        "backup_enabled": True,
+        "backup": str(root / ".backup"),
+    })
+
+    assert result["ok"] is False
+    assert "outside the root" in result["error"]
+    assert not (tmp_path / "keys").exists()

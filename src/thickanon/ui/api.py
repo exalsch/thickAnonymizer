@@ -104,19 +104,60 @@ def preflight_mapping_target(mapping_path) -> None:
 
     The mapping is the only key to the anonymized files. Discovering that its
     destination is unwritable AFTER every file has been overwritten - which,
-    with backups off, is unrecoverable - is the worst possible ordering.
+    with backups off, is unrecoverable - is the worst possible ordering. This
+    cannot be made race-proof, so apply() also has a rescue path; this check
+    just catches the predictable cases up front with a clear message.
     """
     path = Path(mapping_path)
+    if path.is_dir():
+        raise ValueError(
+            f"the mapping path {path} is a folder, not a file. "
+            "Choose a file path for the mapping."
+        )
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        probe = path.parent / f".thickanon-write-test-{uuid.uuid4().hex}"
-        probe.write_bytes(b"")
-        probe.unlink()
+        if path.exists():
+            # Append mode checks writability without truncating a mapping the
+            # user may still need.
+            with path.open("ab"):
+                pass
+        else:
+            probe = path.parent / f".thickanon-write-test-{uuid.uuid4().hex}"
+            probe.write_bytes(b"")
+            probe.unlink()
     except Exception as exc:
         raise ValueError(
             f"the mapping file cannot be written to {path}: {exc}. "
             "Choose a different mapping location before anonymizing."
         ) from exc
+
+
+def save_mapping_or_rescue(mapping, mapping_path, passphrase):
+    """Save the mapping, falling back to a rescue copy in the home directory.
+
+    Called only after the files have already been rewritten. At that point the
+    mapping is the sole way back, so a failed save must never be allowed to
+    simply lose it. Returns (path_actually_used, warning_text).
+    """
+    try:
+        mapping.save(mapping_path, passphrase=passphrase)
+        return str(mapping_path), ""
+    except Exception as exc:
+        rescue = Path.home() / f"thickanon-RESCUE-mapping-{uuid.uuid4().hex[:8]}.json"
+        try:
+            mapping.save(rescue, passphrase=passphrase)
+        except Exception:
+            raise ValueError(
+                f"the files were anonymized but the mapping could NOT be saved to "
+                f"{mapping_path} ({exc}), and the rescue copy failed too. This "
+                "anonymization is not reversible - restore the originals from your "
+                "backup folder."
+            ) from exc
+        return str(rescue), (
+            f"The mapping could not be saved to {mapping_path} ({exc}). "
+            f"It was saved to {rescue} instead. Move it somewhere safe now - it is "
+            "the only way to reverse this anonymization."
+        )
 
 
 class Api:
@@ -345,12 +386,6 @@ class Api:
             scan = self._scan
             root_path = scan.root
 
-            mapping_path = str(opts.get("mapping") or "").strip()
-            if not mapping_path:
-                mapping_path = str(default_mapping_for_root(root_path))
-            ensure_mapping_outside_root(mapping_path, root_path)
-            preflight_mapping_target(mapping_path)
-
             backup_root = None
             if opts.get("backup_enabled", True):
                 backup = str(opts.get("backup") or "").strip()
@@ -358,6 +393,12 @@ class Api:
                     backup = str(default_backup_for_root(root_path))
                 backup_root = resolve_backup_root(backup, root_path)
                 ensure_backup_outside_root(backup_root, root_path)
+
+            mapping_path = str(opts.get("mapping") or "").strip()
+            if not mapping_path:
+                mapping_path = str(default_mapping_for_root(root_path))
+            ensure_mapping_outside_root(mapping_path, root_path)
+            preflight_mapping_target(mapping_path)
 
             approved = set(approved_ids or ())
             if opts.get("approve_all"):
@@ -377,7 +418,9 @@ class Api:
                 # anonymized files over the backup.
                 self._scan = None
                 self._scan_id = None
-            mapping.save(mapping_path, passphrase=opts.get("passphrase") or None)
+            mapping_path, mapping_warning = save_mapping_or_rescue(
+                mapping, mapping_path, opts.get("passphrase") or None
+            )
 
             return {
                 "ok": True,
@@ -386,6 +429,7 @@ class Api:
                 "mapping_path": str(mapping_path),
                 "backup_root": str(backup_root) if backup_root else "",
                 "cancelled": cancel_event.is_set(),
+                "warning": mapping_warning,
             }
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
