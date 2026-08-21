@@ -1,5 +1,5 @@
 # packaging/thickanon.spec
-# Build: pyinstaller packaging/thickanon.spec
+# Build: pyinstaller packaging/thickanon.spec   (or packaging/build.ps1)
 #
 # Produces a single hybrid exe (dist/thickAnonymizer.exe):
 #   - double-click / no args  -> desktop GUI (console hidden on launch)
@@ -13,6 +13,7 @@ from PyInstaller.utils.hooks import collect_all, collect_submodules
 # everything to the project root (the parent of packaging/) via SPECPATH.
 ROOT = os.path.dirname(os.path.abspath(SPECPATH))
 SRC = os.path.join(ROOT, "src")
+PKG = os.path.join(ROOT, "packaging")
 
 datas, binaries, hiddenimports = [], [], []
 for pkg in ["en_core_web_lg", "presidio_analyzer", "presidio_anonymizer"]:
@@ -33,8 +34,14 @@ except Exception:
 # ensure all of our own modules are bundled (the entry imports them lazily)
 hiddenimports += collect_submodules("thickanon")
 
-# bundle the web UI
-datas += [(os.path.join(SRC, "thickanon/ui/web/index.html"), "thickanon/ui/web")]
+# bundle the web UI: every asset the page links to must be listed here, or the
+# exe ships an unstyled, inert window.
+_WEB = os.path.join(SRC, "thickanon", "ui", "web")
+datas += [
+    (os.path.join(_WEB, "index.html"), "thickanon/ui/web"),
+    (os.path.join(_WEB, "app.css"), "thickanon/ui/web"),
+    (os.path.join(_WEB, "app.js"), "thickanon/ui/web"),
+]
 
 # torch is present in the dev env (so thinc auto-registers it), but the
 # en_core_web_lg CNN pipeline runs on thinc/numpy and does not need it for
@@ -48,5 +55,19 @@ _EXCLUDES = [
 a = Analysis([os.path.join(SRC, "thickanon/__main__.py")], pathex=[SRC], datas=datas,
              binaries=binaries, hiddenimports=hiddenimports, excludes=_EXCLUDES)
 pyz = PYZ(a.pure)
-exe = EXE(pyz, a.scripts, a.binaries, a.datas, name="thickAnonymizer",
-          console=True)
+
+# A one-file exe of this size takes roughly 15 seconds to unpack before any of
+# our code runs. Without a splash a double-click looks like nothing happened.
+# ui/app.py closes it once the window has loaded.
+splash = Splash(
+    os.path.join(PKG, "splash.png"),
+    binaries=a.binaries,
+    datas=a.datas,
+    text_pos=None,
+)
+
+exe = EXE(pyz, a.scripts, splash, splash.binaries, a.binaries, a.datas,
+          name="thickAnonymizer",
+          console=True,
+          icon=os.path.join(PKG, "icon.ico"),
+          version=os.path.join(PKG, "version_info.txt"))
