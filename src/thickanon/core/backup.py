@@ -18,6 +18,9 @@ def resolve_backup_root(backup, root) -> Path:
     directory. Resolving against the working directory is how a backup folder
     ends up inside the tree being anonymized, where the next run anonymizes the
     backups too.
+
+    ``ensure_backup_outside_root`` applies the same rule, so the check and the
+    copy always agree about which folder a relative path means.
     """
     path = Path(backup)
     if not path.is_absolute():

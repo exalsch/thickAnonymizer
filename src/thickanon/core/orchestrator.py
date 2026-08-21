@@ -4,6 +4,7 @@ from pathlib import Path
 from thickanon.core.types import AnonymizeConfig
 from thickanon.core.mapping import MappingStore
 from thickanon.core.anonymize import deanonymize_counted
+from thickanon.core.backup import resolve_backup_root
 from thickanon.core.report import BatchReport, DeanonReport
 from thickanon.core.plan import apply_scan, scan_paths
 from thickanon.io.registry import get_handler, UnsupportedFileType
@@ -31,8 +32,13 @@ def ensure_backup_outside_root(backup_root, root) -> None:
 
     A backup inside root is anonymized by the next run over that root, which
     destroys the only copy of the originals. Raises ValueError on violation.
+
+    A relative path is interpreted exactly as resolve_backup_root interprets
+    it - against the root's parent, never the process working directory - so
+    that checking a path and then backing up to it can never disagree about
+    which folder was meant.
     """
-    bp = Path(backup_root).resolve()
+    bp = resolve_backup_root(backup_root, root)
     rt = Path(root).resolve()
     if bp == rt or rt in bp.parents:
         raise ValueError(
