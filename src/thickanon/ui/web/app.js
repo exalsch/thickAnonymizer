@@ -36,6 +36,8 @@ const LOCKED_WHILE_BUSY = [
 
 const GLINER_CONTROLS = ['gliner', 'gliner-labels', 'gliner-threshold', 'gliner-gpu', 'download-model'];
 
+const DERIVED_PATH_IDS = ['root', 'mapping', 'backup'];
+
 /* ---------- small helpers ---------- */
 
 function api() {
@@ -110,6 +112,7 @@ function addFiles(paths) {
   for (const p of paths) {
     if (p && state.files.indexOf(p) === -1) { state.files.push(p); }
   }
+  resetDerivedPaths(false);
   invalidateScan();
   renderFiles();
   applyDefaults();
@@ -118,6 +121,7 @@ function addFiles(paths) {
 function removeFile(path) {
   if (state.busy) { return; }
   state.files = state.files.filter((p) => p !== path);
+  resetDerivedPaths(false);
   invalidateScan();
   renderFiles();
 }
@@ -141,6 +145,17 @@ function renderFiles() {
   const n = state.files.length;
   $('file-count').textContent = n ? `${n} item${n === 1 ? '' : 's'} selected` : '';
   $('clear-files').hidden = n === 0;
+}
+
+function resetDerivedPaths(force) {
+  // root, mapping and backup are derived from the selection. Carrying folder
+  // A's values into folder B's run is how a second run ends up writing over
+  // the first run's key. A value the user typed themselves is kept unless the
+  // selection is cleared outright.
+  for (const id of DERIVED_PATH_IDS) {
+    if (force) { delete $(id).dataset.userEdited; }
+    if (force || $(id).dataset.userEdited !== 'true') { $(id).value = ''; }
+  }
 }
 
 async function applyDefaults() {
@@ -556,7 +571,12 @@ async function saveSettings() {
 function bind() {
   $('browse-files').addEventListener('click', () => browse('files'));
   $('browse-folder').addEventListener('click', () => browse('folder'));
-  $('clear-files').addEventListener('click', () => { state.files = []; invalidateScan(); renderFiles(); });
+  $('clear-files').addEventListener('click', () => {
+    state.files = [];
+    resetDerivedPaths(true);
+    invalidateScan();
+    renderFiles();
+  });
   $('choose-mapping').addEventListener('click', chooseMapping);
   $('choose-backup').addEventListener('click', chooseBackup);
   $('scan').addEventListener('click', doScan);
@@ -579,9 +599,16 @@ function bind() {
   }
   $('deny').addEventListener('input', invalidateScan);
 
+  for (const id of DERIVED_PATH_IDS) {
+    $(id).addEventListener('input', () => { $(id).dataset.userEdited = 'true'; });
+  }
+
   $('review-approve-all').addEventListener('click', () => setGroup(state.review, true));
   $('review-reject-all').addEventListener('click', () => setGroup(state.review, false));
-  $('review-cancel').addEventListener('click', () => $('review').close());
+  $('review-cancel').addEventListener('click', () => {
+    $('review').close();
+    banner('Review cancelled. Nothing was written. Scan again when you are ready.', 'info');
+  });
   $('review-apply').addEventListener('click', async () => {
     const approveAll = state.reviewTruncated && state.approved.size === state.review.length;
     if (state.reviewTruncated && !approveAll) {
@@ -603,6 +630,14 @@ function bind() {
   drop.addEventListener('dragenter', (e) => { e.preventDefault(); drop.classList.add('over'); });
   drop.addEventListener('dragleave', () => drop.classList.remove('over'));
   drop.addEventListener('drop', () => drop.classList.remove('over'));
+
+  // A file dropped anywhere except the drop zone would otherwise make the
+  // WebView navigate to that file, replacing the app with no way back and no
+  // address bar. The drop-zone handler stops propagation, so this only ever
+  // sees strays.
+  for (const type of ['dragover', 'drop']) {
+    document.addEventListener(type, (e) => { e.preventDefault(); });
+  }
 }
 
 async function browse(kind) {

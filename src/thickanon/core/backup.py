@@ -6,6 +6,11 @@ def backup_file(src, root, backup_root) -> Path:
     src, root, backup_root = Path(src), Path(root), Path(backup_root)
     rel = src.relative_to(root)
     dest = backup_root / rel
+    if dest.exists():
+        # The existing backup is by definition the pristine copy from an
+        # earlier run. Overwriting it with the already-anonymized file would
+        # destroy the only remaining original.
+        return dest
     dest.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(src, dest)
     return dest

@@ -384,3 +384,77 @@ def test_a_rejected_backup_leaves_no_stray_mapping_directories(tmp_path):
     assert result["ok"] is False
     assert "outside the root" in result["error"]
     assert not (tmp_path / "keys").exists()
+
+
+def test_second_run_continues_the_existing_mapping(tmp_path):
+    # Replacing the mapping would strand run 1's tokens: counters restart at 1,
+    # so run 2's [EMAIL_1] would be a different person and de-anonymizing run
+    # 1's files would silently restore the wrong values.
+    root = tmp_path / "data"
+    root.mkdir()
+    a = root / "a.txt"
+    a.write_text("mail jane@acme.com", encoding="utf-8")
+    mapping_path = str(tmp_path / "m.json")
+    api = Api()
+
+    scan = api.scan({"files": [str(a)], "root": str(root), "mode": "auto_redact"})
+    api.apply(scan["scan_id"], [], {"mapping": mapping_path, "backup_enabled": False})
+    first = a.read_text(encoding="utf-8")
+
+    b = root / "b.txt"
+    b.write_text("mail bob@evil.com", encoding="utf-8")
+    scan = api.scan({"files": [str(b)], "root": str(root), "mode": "auto_redact"})
+    result = api.apply(scan["scan_id"], [], {"mapping": mapping_path,
+                                             "backup_enabled": False})
+    assert result["ok"] is True, result
+
+    # run 1's token must still resolve to run 1's value
+    restored = api.deanonymize({"files": [str(a)], "mapping": mapping_path})
+    assert restored["ok"] is True
+    assert a.read_text(encoding="utf-8") == "mail jane@acme.com"
+    # and run 2 must have been given a DIFFERENT token
+    assert b.read_text(encoding="utf-8") != first
+
+
+def test_a_second_run_does_not_clobber_the_first_backup(tmp_path):
+    root = tmp_path / "data"
+    root.mkdir()
+    a = root / "a.txt"
+    a.write_text("mail jane@acme.com", encoding="utf-8")
+    backup = tmp_path / "bk"
+    api = Api()
+
+    scan = api.scan({"files": [str(a)], "root": str(root), "mode": "auto_redact"})
+    api.apply(scan["scan_id"], [], {"mapping": str(tmp_path / "m.json"),
+                                    "backup_enabled": True, "backup": str(backup)})
+    assert (backup / "a.txt").read_text(encoding="utf-8") == "mail jane@acme.com"
+
+    scan = api.scan({"files": [str(a)], "root": str(root), "mode": "auto_redact"})
+    api.apply(scan["scan_id"], [], {"mapping": str(tmp_path / "m.json"),
+                                    "backup_enabled": True, "backup": str(backup)})
+    # the pristine original must survive the second run
+    assert (backup / "a.txt").read_text(encoding="utf-8") == "mail jane@acme.com"
+
+
+def test_wrong_passphrase_on_an_existing_mapping_refuses_before_writing(tmp_path):
+    root = tmp_path / "data"
+    root.mkdir()
+    a = root / "a.txt"
+    a.write_text("mail jane@acme.com", encoding="utf-8")
+    mapping_path = str(tmp_path / "m.json")
+    api = Api()
+
+    scan = api.scan({"files": [str(a)], "root": str(root), "mode": "auto_redact"})
+    api.apply(scan["scan_id"], [], {"mapping": mapping_path, "backup_enabled": False,
+                                    "passphrase": "right"})
+    after_first = a.read_text(encoding="utf-8")
+
+    a.write_text("mail bob@evil.com", encoding="utf-8")
+    scan = api.scan({"files": [str(a)], "root": str(root), "mode": "auto_redact"})
+    result = api.apply(scan["scan_id"], [], {"mapping": mapping_path,
+                                             "backup_enabled": False,
+                                             "passphrase": "wrong"})
+    assert result["ok"] is False
+    assert "already exists" in result["error"]
+    assert a.read_text(encoding="utf-8") == "mail bob@evil.com"  # untouched
+    assert after_first  # first run's output was not disturbed

@@ -1,7 +1,7 @@
 import re
 from thickanon.core.types import Entity
 
-# high-precision patterns only — this is a safety net, not primary detection
+# high-precision patterns only - this is a safety net, not primary detection
 _PATTERNS = {
     "IP": re.compile(r"\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b"),
     "EMAIL_ADDRESS": re.compile(r"\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b"),

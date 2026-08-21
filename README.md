@@ -122,8 +122,10 @@ Hugging Face cache (`~/.cache/huggingface/`). To pre-fetch it before going offli
 - GLiNER's real per-entity confidence scores feed the normal review bands
   (below `low_threshold` → ignored; above `high_threshold` → auto-anonymized;
   in between → gray band / human review).
-- If GLiNER mode is enabled but the model cannot be loaded, the tool raises a **hard
-  error** - it does not silently fall back to spaCy-only detection.
+- If GLiNER mode is enabled but the model cannot be loaded, every file fails to
+  scan and is recorded as skipped, with the loader's error as the reason. Nothing
+  is silently anonymized with a weaker detector, but do read the skipped list:
+  a run where every file was skipped anonymized nothing at all.
 
 ## Known limitations
 

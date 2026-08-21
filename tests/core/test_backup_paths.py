@@ -82,3 +82,20 @@ def test_case_only_difference_is_still_inside_root(tmp_path):
     disguised = tmp_path / "DATA" / ".backup"  # same folder, different case
     with pytest.raises(ValueError):
         ensure_backup_outside_root(disguised, root)
+
+
+def test_backup_file_never_overwrites_an_existing_backup(tmp_path):
+    from thickanon.core.backup import backup_file
+
+    root = tmp_path / "data"
+    root.mkdir()
+    src = root / "a.txt"
+    src.write_text("original", encoding="utf-8")
+    backup = tmp_path / "bk"
+
+    backup_file(src, root, backup)
+    assert (backup / "a.txt").read_text(encoding="utf-8") == "original"
+
+    src.write_text("[EMAIL_1] anonymized", encoding="utf-8")
+    backup_file(src, root, backup)
+    assert (backup / "a.txt").read_text(encoding="utf-8") == "original"

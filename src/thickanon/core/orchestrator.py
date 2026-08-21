@@ -14,7 +14,7 @@ def ensure_mapping_outside_root(mapping_path, root) -> None:
     """Guard: the mapping file (the reversible key) must live OUTSIDE the root
     folder being anonymized.
 
-    If it sat inside root it could be anonymized itself, and — worse — it would
+    If it sat inside root it could be anonymized itself, and, worse, it would
     be shared alongside the anonymized files, handing a recipient everything
     needed to fully de-anonymize them. Raises ValueError on violation.
     """

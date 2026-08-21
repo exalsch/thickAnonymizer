@@ -35,6 +35,8 @@ class BatchReport:
             lines.append(f"  {etype}: {n}")
         if self.residual_total:
             lines.append(f"  RESIDUAL LEAKS FLAGGED: {self.residual_total}")
+        for path, reason in self.skipped.items():
+            lines.append(f"  skipped {path}: {reason}")
         return "\n".join(lines)
 
 

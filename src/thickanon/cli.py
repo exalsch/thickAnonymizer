@@ -4,9 +4,11 @@ from pathlib import Path
 from thickanon.core.types import AnonymizeConfig, ReviewMode, GLiNERConfig
 from thickanon.detectors import gliner_model
 from thickanon.core.mapping import MappingStore
+from thickanon.core.backup import resolve_backup_root
 from thickanon.core.orchestrator import (
     anonymize_paths,
     deanonymize_paths,
+    ensure_backup_outside_root,
     ensure_mapping_outside_root,
 )
 
@@ -54,6 +56,14 @@ def main(argv=None) -> int:
         except ValueError as exc:
             print(f"ERROR: {exc}", file=sys.stderr)
             return 2
+        backup_root = None
+        if ns.backup:
+            backup_root = resolve_backup_root(ns.backup, ns.root)
+            try:
+                ensure_backup_outside_root(backup_root, ns.root)
+            except ValueError as exc:
+                print(f"ERROR: {exc}", file=sys.stderr)
+                return 2
         gliner_cfg = None
         if ns.gliner:
             kw = {"enabled": True, "model_path": ns.gliner_model,
@@ -64,9 +74,16 @@ def main(argv=None) -> int:
         cfg = AnonymizeConfig(mode=ReviewMode(ns.mode), deny_list=ns.deny, gliner=gliner_cfg)
         mapping = MappingStore()
         report = anonymize_paths(_expand(ns.paths), Path(ns.root), mapping, cfg,
-                                 backup_root=Path(ns.backup) if ns.backup else None)
+                                 backup_root=backup_root)
         mapping.save(ns.mapping, passphrase=ns.passphrase)
         print(report.summary())
+        if not report.files and report.skipped:
+            print(
+                "ERROR: nothing was anonymized - every input file was skipped. "
+                "See the reasons above.",
+                file=sys.stderr,
+            )
+            return 1
         if cfg.mode == ReviewMode.QUICK_REVIEW:
             print(
                 "WARNING: quick_review mode has no interactive reviewer on the CLI, "

@@ -237,7 +237,13 @@ def apply_scan(scan: ScanResult, mapping, approved_ids=None, backup_root=None,
 
         try:
             if backup_root is not None:
-                backup_file(file_scan.path, scan.root, backup_root)
+                try:
+                    backup_file(file_scan.path, scan.root, backup_root)
+                except ValueError as exc:
+                    raise ValueError(
+                        f"this file is not inside the root folder, so it cannot be "
+                        f"backed up: {exc}"
+                    ) from exc
 
             by_fragment: dict[int, list[Entity]] = {}
             for candidate in selected:

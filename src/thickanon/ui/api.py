@@ -132,6 +132,29 @@ def preflight_mapping_target(mapping_path) -> None:
         ) from exc
 
 
+def load_or_new_mapping(mapping_path, passphrase):
+    """Continue an existing mapping rather than replacing it.
+
+    Replacing it would strand every token already written into files by an
+    earlier run: the counters restart at 1, so a new [EMAIL_1] means a
+    different person, and de-anonymizing those older files would silently
+    restore the wrong values. MappingStore.from_dict restores the counters,
+    so continuing is correct and also keeps tokens stable across runs.
+    """
+    path = Path(mapping_path)
+    if not path.exists():
+        return MappingStore()
+    try:
+        return MappingStore.load(path, passphrase=passphrase)
+    except Exception as exc:
+        raise ValueError(
+            f"a mapping already exists at {path} and could not be opened ({exc}). "
+            "Anonymizing now would overwrite it and strand the tokens already "
+            "written into your earlier files. Use the passphrase that mapping was "
+            "saved with, or choose a different mapping path."
+        ) from exc
+
+
 def save_mapping_or_rescue(mapping, mapping_path, passphrase):
     """Save the mapping, falling back to a rescue copy in the home directory.
 
@@ -143,8 +166,11 @@ def save_mapping_or_rescue(mapping, mapping_path, passphrase):
         mapping.save(mapping_path, passphrase=passphrase)
         return str(mapping_path), ""
     except Exception as exc:
-        rescue = Path.home() / f"thickanon-RESCUE-mapping-{uuid.uuid4().hex[:8]}.json"
         try:
+            # Path.home() itself can raise (no HOME/USERPROFILE). Keeping it
+            # inside this try means such a failure still produces the "could
+            # NOT be saved" message instead of a bare RuntimeError.
+            rescue = Path.home() / f"thickanon-RESCUE-mapping-{uuid.uuid4().hex[:8]}.json"
             mapping.save(rescue, passphrase=passphrase)
         except Exception:
             raise ValueError(
@@ -189,47 +215,65 @@ class Api:
 
     def on_files_dropped(self, paths) -> dict:
         """Called from Python by the native drop handler (see ui/app.py)."""
-        clean = [str(p) for p in (paths or []) if p and str(p).strip()]
-        self._emit("files", {"paths": clean})
-        return {"ok": True, "paths": clean}
+        try:
+            clean = [str(p) for p in (paths or []) if p and str(p).strip()]
+            self._emit("files", {"paths": clean})
+            return {"ok": True, "paths": clean}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
 
     # ----- environment ------------------------------------------------------
     def environment(self) -> dict:
-        available, reason = gliner_availability()
-        return {
-            "ok": True,
-            "version": __version__,
-            "platform": platform.system(),
-            "gliner": {"available": available, "reason": reason},
-        }
+        try:
+            available, reason = gliner_availability()
+            return {
+                "ok": True,
+                "version": __version__,
+                "platform": platform.system(),
+                "gliner": {"available": available, "reason": reason},
+            }
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
 
     # ----- dialogs (require a live window; no-op when headless) -------------
     def pick_files(self) -> dict:
-        if self.window is None:
-            return {"ok": False, "error": "no window"}
-        result = self.window.create_file_dialog(webview.FileDialog.OPEN, allow_multiple=True)
-        return {"ok": True, "paths": [str(p) for p in result] if result else []}
+        try:
+            if self.window is None:
+                return {"ok": False, "error": "no window"}
+            result = self.window.create_file_dialog(webview.FileDialog.OPEN, allow_multiple=True)
+            return {"ok": True, "paths": [str(p) for p in result] if result else []}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
 
     def pick_folder(self) -> dict:
-        if self.window is None:
-            return {"ok": False, "error": "no window"}
-        result = self.window.create_file_dialog(webview.FileDialog.FOLDER)
-        return {"ok": True, "paths": [str(p) for p in result] if result else []}
+        try:
+            if self.window is None:
+                return {"ok": False, "error": "no window"}
+            result = self.window.create_file_dialog(webview.FileDialog.FOLDER)
+            return {"ok": True, "paths": [str(p) for p in result] if result else []}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
 
     def pick_mapping(self, suggested_name="mapping.json") -> dict:
-        if self.window is None:
-            return {"ok": False, "error": "no window"}
-        result = self.window.create_file_dialog(
-            webview.FileDialog.SAVE, save_filename=suggested_name
-        )
-        # SAVE may return a str or a 1-tuple depending on platform/version
-        if not result:
-            return {"ok": True, "path": ""}
-        path = result[0] if isinstance(result, (list, tuple)) else result
-        return {"ok": True, "path": str(path)}
+        try:
+            if self.window is None:
+                return {"ok": False, "error": "no window"}
+            result = self.window.create_file_dialog(
+                webview.FileDialog.SAVE, save_filename=suggested_name
+            )
+            # SAVE may return a str or a 1-tuple depending on platform/version
+            if not result:
+                return {"ok": True, "path": ""}
+            path = result[0] if isinstance(result, (list, tuple)) else result
+            return {"ok": True, "path": str(path)}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
 
     def pick_backup(self) -> dict:
-        return self.pick_folder()
+        try:
+            return self.pick_folder()
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
 
     def save_report(self, report, suggested_name="thickanon-report.json") -> dict:
         """Write a finished report to a file the user chooses."""
@@ -249,16 +293,19 @@ class Api:
 
     # ----- defaults (pure logic; unit-testable) ----------------------------
     def suggest_defaults(self, files, root="") -> dict:
-        root_path = Path(root) if str(root).strip() else infer_root(files)
-        if root_path is None:
-            return {"ok": True, "root": "", "mapping": "", "backup": ""}
-        root_path = root_path.resolve()
-        return {
-            "ok": True,
-            "root": str(root_path),
-            "mapping": str(default_mapping_for_root(root_path)),
-            "backup": str(default_backup_for_root(root_path)),
-        }
+        try:
+            root_path = Path(root) if str(root).strip() else infer_root(files)
+            if root_path is None:
+                return {"ok": True, "root": "", "mapping": "", "backup": ""}
+            root_path = root_path.resolve()
+            return {
+                "ok": True,
+                "root": str(root_path),
+                "mapping": str(default_mapping_for_root(root_path)),
+                "backup": str(default_backup_for_root(root_path)),
+            }
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
 
     # ----- settings ---------------------------------------------------------
     def load_settings(self) -> dict:
@@ -404,7 +451,7 @@ class Api:
             if opts.get("approve_all"):
                 approved = {c.id for c in scan.review_candidates()}
 
-            mapping = MappingStore()
+            mapping = load_or_new_mapping(mapping_path, opts.get("passphrase") or None)
             cancel_event = self._begin()
             try:
                 report = apply_scan(
