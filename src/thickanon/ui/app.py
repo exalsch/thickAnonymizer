@@ -1,6 +1,7 @@
 """Desktop window: preflight the renderer, create the window, wire native drops."""
 import sys
 import threading
+import time
 import webbrowser
 from pathlib import Path
 
@@ -140,19 +141,43 @@ def run() -> int:
     )
     api.window = window  # let the bridge open dialogs and push progress
 
-    def on_loaded(*_args):
-        # Deliberately no splash_text() here. Updating the splash from this
-        # thread stopped the subsequent close from working, and a message
-        # shown microseconds before the splash is destroyed is worthless.
+    finished = threading.Event()
+
+    def finish_startup():
+        """Wire drag-and-drop and dismiss the splash, exactly once.
+
+        Runs from whichever path gets there first. The `loaded` event fires
+        when running from source but NOT inside the bundled exe, which
+        previously left drag-and-drop unwired and the splash stranded on
+        screen, so a poll is the reliable trigger and the event is a bonus.
+        """
+        if finished.is_set():
+            return
+        finished.set()
         _wire_drop(window, api)
         close_splash()
 
-    window.events.loaded += on_loaded
-    # Backstop: on_loaded runs on pywebview's event thread, and a failure to
-    # close there would strand the splash on screen for the whole session.
-    # This timer runs regardless, and closing an already-closed splash is
-    # harmless.
-    threading.Timer(20.0, close_splash).start()
+    def wait_for_page():
+        """Poll until the page is live, then finish start-up.
+
+        `window.dom.get_element` runs JavaScript in the page, so it only
+        succeeds once the document exists. That makes it a direct test of the
+        thing we actually need, rather than a guess at a delay.
+        """
+        deadline = time.monotonic() + 120
+        while not finished.is_set() and time.monotonic() < deadline:
+            try:
+                if window.dom.get_element("#drop") is not None:
+                    finish_startup()
+                    return
+            except Exception:
+                pass
+            time.sleep(0.5)
+        # Whatever happened, never leave the splash on the user's screen.
+        finish_startup()
+
+    window.events.loaded += lambda *_args: finish_startup()
+    threading.Thread(target=wait_for_page, daemon=True).start()
     webview.start()
     return 0
 

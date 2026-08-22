@@ -120,3 +120,65 @@ def test_close_splash_actually_calls_close(monkeypatch):
 
     close_splash()
     assert calls == ["closed"]
+
+
+def test_finish_startup_runs_once_even_from_both_paths(monkeypatch):
+    # The loaded event and the poll can both fire; wiring the drop handler
+    # twice would register a duplicate listener with pywebview.
+    import threading as _threading
+
+    calls = []
+    finished = _threading.Event()
+
+    def finish_startup():
+        if finished.is_set():
+            return
+        finished.set()
+        calls.append("ran")
+
+    finish_startup()
+    finish_startup()
+    finish_startup()
+    assert calls == ["ran"]
+
+
+def test_wire_drop_survives_a_window_with_no_dom(monkeypatch):
+    # _wire_drop must never raise: drag-and-drop is a convenience and the
+    # Browse buttons are the guaranteed path.
+    from thickanon.ui.app import _wire_drop
+
+    class Boom:
+        @property
+        def dom(self):
+            raise RuntimeError("no dom")
+
+    _wire_drop(Boom(), object())  # must not raise
+
+
+def test_wire_drop_registers_the_drop_handler():
+    from thickanon.ui.app import _wire_drop
+
+    registered = []
+
+    class Events:
+        def __init__(self):
+            self.drop = self
+
+        def __iadd__(self, handler):
+            registered.append(handler)
+            return self
+
+    class Element:
+        def __init__(self):
+            self.events = Events()
+
+    class Dom:
+        def get_element(self, selector):
+            assert selector == "#drop"
+            return Element()
+
+    class Window:
+        dom = Dom()
+
+    _wire_drop(Window(), object())
+    assert len(registered) == 1
