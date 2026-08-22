@@ -93,3 +93,13 @@ def test_web_assets_are_real_string_literals_in_the_spec():
     }
     for name in ("index.html", "app.css", "app.js"):
         assert name in literals, f"{name} is not a string literal in the spec"
+
+
+def test_splash_does_not_float_above_every_other_window():
+    # always_on_top defaults to True. The app takes about 20 seconds to start,
+    # so a splash that cannot lose focus blocks the whole desktop meanwhile.
+    splash = _find_call(_spec_ast(), "Splash")
+    assert splash is not None, "the spec has no Splash(...) call"
+    values = {k.arg: k.value for k in splash.keywords}
+    assert "always_on_top" in values, "always_on_top is not set, so it defaults to True"
+    assert ast.literal_eval(values["always_on_top"]) is False

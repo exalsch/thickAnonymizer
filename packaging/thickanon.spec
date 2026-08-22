@@ -59,6 +59,9 @@ pyz = PYZ(a.pure)
 # A one-file exe of this size takes roughly 15 seconds to unpack before any of
 # our code runs. Without a splash a double-click looks like nothing happened.
 # ui/app.py closes it once the window has loaded.
+# always_on_top defaults to True, which makes the splash float above every
+# other window for the whole start-up. The app takes about 20 seconds to
+# start, so it must be possible to click away and do something else.
 splash = Splash(
     os.path.join(PKG, "splash.png"),
     binaries=a.binaries,
@@ -67,6 +70,7 @@ splash = Splash(
     text_size=10,
     text_color="#97a1b0",
     text_default="Unpacking the application, this takes a few seconds...",
+    always_on_top=False,
 )
 
 # Argument order follows PyInstaller's own --onefile --splash template:
