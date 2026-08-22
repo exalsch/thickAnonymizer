@@ -1,5 +1,6 @@
 """Desktop window: preflight the renderer, create the window, wire native drops."""
 import sys
+import threading
 import webbrowser
 from pathlib import Path
 
@@ -57,32 +58,38 @@ def message_box(title: str, text: str) -> None:
 
 
 def close_splash() -> None:
-    """Dismiss the PyInstaller splash screen. No-op outside a bundled exe."""
+    """Dismiss the PyInstaller splash screen. No-op outside a bundled exe.
+
+    A failure here leaves the splash stranded on the user's screen for the
+    whole session, so it must never be silent: a swallowed exception here once
+    hid exactly that bug. Outside a bundle pyi_splash does not exist, which is
+    normal and not worth reporting.
+    """
     try:
         import pyi_splash  # provided only inside a PyInstaller bundle
-
+    except ImportError:
+        return
+    try:
         pyi_splash.close()
-    except Exception:
-        pass
+    except Exception as exc:
+        print(f"warning: could not close the splash screen: {exc}", file=sys.stderr)
 
 
 def splash_text(message: str) -> None:
     """Update the PyInstaller splash screen's status line.
 
-    No-op outside a bundled exe, where pyi_splash does not exist. Failures are
-    ignored: a cosmetic progress message must never be able to stop the app
-    from starting.
-
-    During the one-file unpack the bootloader overwrites this line with the name
-    of each file it extracts, so these messages are what the user sees from the
-    end of the unpack onwards.
+    No-op outside a bundled exe. During the one-file unpack the bootloader
+    overwrites this line with the name of each file it extracts, so these
+    messages are what the user sees from the end of the unpack onwards.
     """
     try:
         import pyi_splash  # provided only inside a PyInstaller bundle
-
+    except ImportError:
+        return
+    try:
         pyi_splash.update_text(message)
-    except Exception:
-        pass
+    except Exception as exc:
+        print(f"warning: could not update the splash screen: {exc}", file=sys.stderr)
 
 
 def dropped_paths(event) -> list[str]:
@@ -134,11 +141,18 @@ def run() -> int:
     api.window = window  # let the bridge open dialogs and push progress
 
     def on_loaded(*_args):
-        splash_text("Ready.")
+        # Deliberately no splash_text() here. Updating the splash from this
+        # thread stopped the subsequent close from working, and a message
+        # shown microseconds before the splash is destroyed is worthless.
         _wire_drop(window, api)
         close_splash()
 
     window.events.loaded += on_loaded
+    # Backstop: on_loaded runs on pywebview's event thread, and a failure to
+    # close there would strand the splash on screen for the whole session.
+    # This timer runs regardless, and closing an already-closed splash is
+    # harmless.
+    threading.Timer(20.0, close_splash).start()
     webview.start()
     return 0
 

@@ -77,3 +77,46 @@ def test_splash_text_survives_a_failing_pyi_splash(monkeypatch):
     from thickanon.ui.app import splash_text
 
     splash_text("Loading...")  # a cosmetic message must never break start-up
+
+
+def test_close_splash_reports_a_failure_instead_of_hiding_it(monkeypatch, capsys):
+    import sys as _sys
+    import types
+
+    def boom():
+        raise RuntimeError("ipc closed")
+
+    fake = types.ModuleType("pyi_splash")
+    fake.close = boom
+    monkeypatch.setitem(_sys.modules, "pyi_splash", fake)
+
+    from thickanon.ui.app import close_splash
+
+    close_splash()  # must not raise
+    assert "could not close the splash screen" in capsys.readouterr().err
+
+
+def test_close_splash_is_silent_when_not_bundled(monkeypatch, capsys):
+    import sys as _sys
+
+    monkeypatch.setitem(_sys.modules, "pyi_splash", None)
+    from thickanon.ui.app import close_splash
+
+    close_splash()
+    # Outside a bundle there is nothing to close and nothing to say.
+    assert capsys.readouterr().err == ""
+
+
+def test_close_splash_actually_calls_close(monkeypatch):
+    import sys as _sys
+    import types
+
+    calls = []
+    fake = types.ModuleType("pyi_splash")
+    fake.close = lambda: calls.append("closed")
+    monkeypatch.setitem(_sys.modules, "pyi_splash", fake)
+
+    from thickanon.ui.app import close_splash
+
+    close_splash()
+    assert calls == ["closed"]
