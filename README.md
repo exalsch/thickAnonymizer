@@ -66,9 +66,10 @@ download instead of opening a broken window. The command-line mode does not need
     .\packaging\build.ps1
     # dist/thickAnonymizer.exe  (488 MB)
 
-The script cleans the previous build, runs PyInstaller, and prints the size and SHA256
-of the result so a shared copy can be verified. `pyinstaller packaging/thickanon.spec`
-still works if you prefer to drive it yourself.
+The script cleans the previous build, runs PyInstaller, smoke-tests the exe and refuses
+to report success if it cannot run, and prints the size and SHA256 of the result so a
+shared copy can be verified. `pyinstaller packaging/thickanon.spec` still works if you
+prefer to drive it yourself.
 
 One exe does **both** roles, dispatching on its arguments (`thickanon/__main__.py`):
 
