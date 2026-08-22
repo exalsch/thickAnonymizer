@@ -63,7 +63,10 @@ splash = Splash(
     os.path.join(PKG, "splash.png"),
     binaries=a.binaries,
     datas=a.datas,
-    text_pos=None,
+    text_pos=(28, 214),
+    text_size=10,
+    text_color="#97a1b0",
+    text_default="Unpacking the application, this takes a few seconds...",
 )
 
 # Argument order follows PyInstaller's own --onefile --splash template:

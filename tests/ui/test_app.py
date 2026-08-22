@@ -40,3 +40,40 @@ def test_webview2_present_is_true_off_windows(monkeypatch):
 
 def test_close_splash_is_safe_without_pyinstaller():
     close_splash()  # must not raise outside a bundled exe
+
+
+def test_splash_text_is_safe_without_pyinstaller():
+    from thickanon.ui.app import splash_text
+
+    splash_text("anything")  # must not raise outside a bundled exe
+
+
+def test_splash_text_updates_when_pyi_splash_is_present(monkeypatch):
+    import sys as _sys
+    import types
+
+    calls = []
+    fake = types.ModuleType("pyi_splash")
+    fake.update_text = lambda message: calls.append(message)
+    monkeypatch.setitem(_sys.modules, "pyi_splash", fake)
+
+    from thickanon.ui.app import splash_text
+
+    splash_text("Loading...")
+    assert calls == ["Loading..."]
+
+
+def test_splash_text_survives_a_failing_pyi_splash(monkeypatch):
+    import sys as _sys
+    import types
+
+    def boom(message):
+        raise RuntimeError("splash already closed")
+
+    fake = types.ModuleType("pyi_splash")
+    fake.update_text = boom
+    monkeypatch.setitem(_sys.modules, "pyi_splash", fake)
+
+    from thickanon.ui.app import splash_text
+
+    splash_text("Loading...")  # a cosmetic message must never break start-up

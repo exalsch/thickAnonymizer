@@ -11,6 +11,8 @@ HERE = Path(__file__).resolve().parent
 ACCENT = (37, 99, 235, 255)
 INK = (255, 255, 255, 255)
 SPLASH_BG = (14, 17, 23, 255)
+MUTED = (151, 161, 176, 255)
+RULE = (44, 52, 64, 255)
 
 
 def _font(size: int):
@@ -44,11 +46,16 @@ def make_splash() -> Path:
     width, height = 460, 280
     image = Image.new("RGBA", (width, height), SPLASH_BG)
     draw = ImageDraw.Draw(image)
-    draw.rounded_rectangle((width / 2 - 44, 44, width / 2 + 44, 132), radius=22, fill=ACCENT)
-    _centered(draw, (width / 2 - 44, 44, width / 2 + 44, 132), "TA", _font(48), INK)
-    _centered(draw, (0, 150, width, 186), "thickAnonymizer", _font(26), INK)
-    _centered(draw, (0, 186, width, 214), "Starting up, this takes a moment...",
-              _font(14), (151, 161, 176, 255))
+
+    # Mark, top left, with the product name beside it.
+    draw.rounded_rectangle((28, 40, 100, 112), radius=18, fill=ACCENT)
+    _centered(draw, (28, 40, 100, 112), "TA", _font(38), INK)
+    draw.text((118, 56), "thickAnonymizer", font=_font(24), fill=INK)
+    draw.text((120, 90), "Preparing to start", font=_font(13), fill=MUTED)
+
+    # A rule above the area the live status text is drawn into at run time.
+    draw.line((28, 196, width - 28, 196), fill=RULE, width=1)
+
     out = HERE / "splash.png"
     image.convert("RGB").save(out)
     return out

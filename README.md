@@ -73,8 +73,10 @@ still works if you prefer to drive it yourself.
 One exe does **both** roles, dispatching on its arguments (`thickanon/__main__.py`):
 
 - **Double-click** (no arguments) -> a splash appears while the one-file archive
-  unpacks, then the desktop **GUI**. The exe is a console binary, so a console window
-  flashes briefly and is then hidden; only the app window remains.
+  unpacks, then the desktop **GUI**. The splash shows a live status line describing
+  what the app is doing as it starts, so a slow first launch does not look like a
+  hang. The exe is a console binary, so a console window flashes briefly and is
+  then hidden; only the app window remains.
 - **From a terminal** with arguments -> the **CLI**, e.g.
   `thickAnonymizer.exe anon C:\data --root C:\data --mapping C:\keys\map.json --mode auto_redact`.
   Because it is a console-subsystem exe, the shell waits for it, stdout/stderr pipe and

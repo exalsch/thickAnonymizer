@@ -35,6 +35,16 @@ def main(argv=None) -> int:
         return cli_main(argv)
     # No arguments -> desktop GUI.
     _hide_console_on_windows()
+
+    # Importing the UI pulls in webview and the detection stack, which is the
+    # slowest part of start-up after the unpack. Say so before it begins.
+    try:
+        import pyi_splash
+
+        pyi_splash.update_text("Loading the detection engine...")
+    except Exception:
+        pass
+
     from thickanon.ui.app import run
 
     return run()

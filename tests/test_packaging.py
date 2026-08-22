@@ -23,6 +23,14 @@ def test_spec_wires_icon_version_and_splash():
     assert "Splash(" in spec
 
 
+def test_spec_enables_live_splash_text():
+    # text_pos=None disables the splash's status line entirely, which leaves a
+    # 488 MB one-file exe looking frozen for its whole unpack.
+    spec = SPEC.read_text(encoding="utf-8")
+    assert "text_pos=(" in spec, "the splash status line is disabled"
+    assert "text_default=" in spec
+
+
 def test_generated_artifacts_are_committed():
     assert (ROOT / "packaging" / "icon.ico").is_file()
     assert (ROOT / "packaging" / "splash.png").is_file()

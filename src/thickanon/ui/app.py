@@ -66,6 +66,21 @@ def close_splash() -> None:
         pass
 
 
+def splash_text(message: str) -> None:
+    """Update the PyInstaller splash screen's status line.
+
+    No-op outside a bundled exe, where pyi_splash does not exist. Failures are
+    ignored: a cosmetic progress message must never be able to stop the app
+    from starting.
+    """
+    try:
+        import pyi_splash  # provided only inside a PyInstaller bundle
+
+        pyi_splash.update_text(message)
+    except Exception:
+        pass
+
+
 def dropped_paths(event) -> list[str]:
     """Pull real filesystem paths out of a pywebview drop event.
 
@@ -93,6 +108,7 @@ def _wire_drop(window, api: Api) -> None:
 
 
 def run() -> int:
+    splash_text("Starting thickAnonymizer...")
     if not webview2_present():
         close_splash()
         message_box(
@@ -106,6 +122,7 @@ def run() -> int:
 
     html = Path(__file__).parent / "web" / "index.html"
     api = Api()
+    splash_text("Opening the window...")
     window = webview.create_window(
         "thickAnonymizer", url=html.as_uri(), js_api=api,
         width=1060, height=840, min_size=(760, 620),
@@ -113,6 +130,7 @@ def run() -> int:
     api.window = window  # let the bridge open dialogs and push progress
 
     def on_loaded(*_args):
+        splash_text("Ready.")
         _wire_drop(window, api)
         close_splash()
 
