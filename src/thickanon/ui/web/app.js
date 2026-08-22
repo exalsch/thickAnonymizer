@@ -85,7 +85,7 @@ function setBusy(busy) {
 }
 
 function setProgress(done, total, path, stage) {
-  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+  const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
   $('progress-bar').style.width = pct + '%';
   const track = $('progress-bar').parentElement;
   track.setAttribute('role', 'progressbar');
@@ -94,8 +94,9 @@ function setProgress(done, total, path, stage) {
   track.setAttribute('aria-valuenow', String(pct));
   const elapsed = Math.round((performance.now() - state.startedAt) / 1000);
   const verb = stage === 'apply' ? 'Writing' : stage === 'deanonymize' ? 'Restoring' : 'Scanning';
+  const files = total === 1 ? '1 file' : `${total} files`;
   $('progress-label').textContent = total
-    ? `${verb} ${done} of ${total} (${pct}%) - ${elapsed}s`
+    ? `${verb} ${files} - ${pct}% - ${elapsed}s`
     : `${verb}...`;
   $('progress-file').textContent = path || '';
 }
@@ -710,7 +711,11 @@ async function start() {
 
   const saved = await api().load_settings();
   const s = (saved && saved.settings) || {};
-  if (s.mode) { $('mode').value = s.mode; }
+  // Only restore a mode the dropdown actually offers. Assigning an unknown
+  // value blanks a <select>, and a blank mode makes every scan fail.
+  if (s.mode && [...$('mode').options].some((o) => o.value === s.mode)) {
+    $('mode').value = s.mode;
+  }
   if (s.deny) { $('deny').value = s.deny; }
   if (s.backup_enabled === false) { $('backup-enabled').checked = false; $('backup').disabled = true; }
   if (s.gliner && state.env.gliner.available) { $('gliner').checked = true; }
@@ -727,11 +732,13 @@ if (window.pywebview) {
 } else {
   window.addEventListener('pywebviewready', start);
   // pywebview injects its bridge after this script runs, so the listener above
-  // is the normal path. If it never fires the page is inert, and saying so is
-  // better than leaving every control silently dead.
+  // is the normal path. Give it a generous window: this is a one-file exe that
+  // takes roughly 20 seconds to start. If the bridge turned up but the event
+  // was missed, just start; only accuse the page of being outside the app when
+  // the bridge genuinely never arrived.
   setTimeout(() => {
-    if (!state.started) {
-      banner('This page is not running inside the thickAnonymizer app, so nothing on it will work. Launch thickAnonymizer.exe instead.');
-    }
-  }, 3000);
+    if (state.started) { return; }
+    if (window.pywebview) { start(); return; }
+    banner('This page is not running inside the thickAnonymizer app, so nothing on it will work. Launch thickAnonymizer.exe instead.');
+  }, 20000);
 }

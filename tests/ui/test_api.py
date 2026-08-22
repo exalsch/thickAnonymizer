@@ -458,3 +458,10 @@ def test_wrong_passphrase_on_an_existing_mapping_refuses_before_writing(tmp_path
     assert "already exists" in result["error"]
     assert a.read_text(encoding="utf-8") == "mail bob@evil.com"  # untouched
     assert after_first  # first run's output was not disturbed
+
+
+def test_an_unknown_review_mode_gives_a_readable_error(tmp_path):
+    root, f = _root_with_file(tmp_path)
+    result = Api().scan({"files": [str(f)], "root": str(root), "mode": "x"})
+    assert result["ok"] is False
+    assert "unknown review mode" in result["error"]

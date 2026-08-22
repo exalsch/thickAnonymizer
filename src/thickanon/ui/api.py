@@ -332,8 +332,17 @@ class Api:
             if labels:
                 kw["labels"] = labels
             gliner_cfg = GLiNERConfig(**kw)
+        raw_mode = opts.get("mode") or "quick_review"
+        try:
+            mode = ReviewMode(raw_mode)
+        except ValueError:
+            raise ValueError(
+                f"unknown review mode {raw_mode!r}. Choose Quick review, "
+                "Automatic - redact everything uncertain, or Automatic - skip "
+                "everything uncertain."
+            ) from None
         return AnonymizeConfig(
-            mode=ReviewMode(opts.get("mode") or "quick_review"),
+            mode=mode,
             deny_list=deny,
             gliner=gliner_cfg,
         )

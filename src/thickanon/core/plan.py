@@ -169,7 +169,15 @@ def scan_paths(paths, root, config: AnonymizeConfig, progress=None, cancel=None)
             candidates: list[Candidate] = []
             for fragment_index, fragment in enumerate(fragments):
                 result.text_bytes += len(fragment.encode("utf-8"))
-                apply_now, flagged = partition(detect(fragment, config), config)
+                def chunk_progress(done_chunks, total_chunks, _done=done, _index=fragment_index):
+                    # Only worth reporting when a fragment is large enough to be
+                    # split; otherwise this fires once per fragment and adds noise.
+                    if progress is None or total_chunks <= 1:
+                        return
+                    fraction = (_index + done_chunks / total_chunks) / max(1, len(fragments))
+                    progress(round(_done - 1 + fraction, 3), total, str(path), "scan")
+
+                apply_now, flagged = partition(detect(fragment, config, progress=chunk_progress), config)
                 for band, group in (("auto", apply_now), ("review", flagged)):
                     for entity in group:
                         context, cstart, cend = extract_context(fragment, entity)
