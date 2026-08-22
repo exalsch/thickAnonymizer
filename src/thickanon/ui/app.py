@@ -72,6 +72,10 @@ def splash_text(message: str) -> None:
     No-op outside a bundled exe, where pyi_splash does not exist. Failures are
     ignored: a cosmetic progress message must never be able to stop the app
     from starting.
+
+    During the one-file unpack the bootloader overwrites this line with the name
+    of each file it extracts, so these messages are what the user sees from the
+    end of the unpack onwards.
     """
     try:
         import pyi_splash  # provided only inside a PyInstaller bundle

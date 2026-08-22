@@ -51,7 +51,7 @@ def make_splash() -> Path:
     draw.rounded_rectangle((28, 40, 100, 112), radius=18, fill=ACCENT)
     _centered(draw, (28, 40, 100, 112), "TA", _font(38), INK)
     draw.text((118, 56), "thickAnonymizer", font=_font(24), fill=INK)
-    draw.text((120, 90), "Preparing to start", font=_font(13), fill=MUTED)
+    draw.text((120, 90), "Starting up - the first launch takes a few seconds", font=_font(12), fill=MUTED)
 
     # A rule above the area the live status text is drawn into at run time.
     draw.line((28, 196, width - 28, 196), fill=RULE, width=1)
