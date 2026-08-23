@@ -58,6 +58,34 @@ function banner(message, kind) {
   el.hidden = false;
 }
 
+function askConfirm(title, message, confirmLabel) {
+  // An in-page dialog, not window.confirm: a native script dialog blocks the
+  // whole WebView2 renderer while it is open, which makes the app look frozen
+  // if it is not visible, and can stall any Python push issued meanwhile.
+  return new Promise((resolve) => {
+    const dialog = $('confirm');
+    $('confirm-title').textContent = title;
+    $('confirm-body').textContent = message;
+    $('confirm-yes').textContent = confirmLabel || 'Continue';
+
+    const finish = (answer) => {
+      $('confirm-yes').removeEventListener('click', onYes);
+      $('confirm-no').removeEventListener('click', onNo);
+      dialog.removeEventListener('cancel', onCancel);
+      if (dialog.open) { dialog.close(); }
+      resolve(answer);
+    };
+    const onYes = () => finish(true);
+    const onNo = () => finish(false);
+    const onCancel = () => finish(false);   // Escape key
+
+    $('confirm-yes').addEventListener('click', onYes);
+    $('confirm-no').addEventListener('click', onNo);
+    dialog.addEventListener('cancel', onCancel);
+    dialog.showModal();
+  });
+}
+
 function basename(path) {
   const parts = String(path).split(/[\\/]/);
   return parts[parts.length - 1] || path;
@@ -279,8 +307,15 @@ async function confirmAndApply(scan) {
   const target = $('backup-enabled').checked
     ? 'Originals are backed up first.'
     : 'Originals are overwritten with no backup.';
-  const ok = window.confirm(`${summariseScan(scan)}.\n\n${target}\n\nWrite these changes now?`);
-  if (!ok) { return; }
+  const ok = await askConfirm(
+    'Write these changes?',
+    `${summariseScan(scan)}.\n\n${target}`,
+    'Write changes'
+  );
+  if (!ok) {
+    banner('Nothing was written. Your files are unchanged.', 'info');
+    return;
+  }
   await doApply([]);
 }
 
@@ -612,15 +647,22 @@ function bind() {
   });
   $('review-apply').addEventListener('click', async () => {
     const approveAll = state.reviewTruncated && state.approved.size === state.review.length;
+    // Close the review before anything else: showModal() on a second dialog
+    // while this one is still open is legal but confusing, and the
+    // confirmation below can send the user straight back here.
+    $('review').close();
     if (state.reviewTruncated && !approveAll) {
       const unseen = state.reviewTotal - state.review.length;
-      const ok = window.confirm(
+      const ok = await askConfirm(
+        'Some detections were never shown',
         `${unseen} detection(s) beyond the ${state.review.length} shown were never displayed.\n\n` +
         'Because you changed the selection, all of them will be LEFT IN PLACE and will still ' +
-        'appear in the written files.\n\nContinue anyway?');
-      if (!ok) { return; }
+        'appear in the written files.',
+        'Continue anyway'
+      );
+      // Reopen the review rather than dumping the user out of it.
+      if (!ok) { $('review').showModal(); return; }
     }
-    $('review').close();
     await doApply([...state.approved], approveAll);
   });
 

@@ -262,6 +262,17 @@ dialog#review {
   color: var(--text);
 }
 dialog#review::backdrop { background: rgba(0, 0, 0, .55); }
+
+dialog#confirm {
+  width: min(520px, 92vw);
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+}
+dialog#confirm::backdrop { background: rgba(0, 0, 0, .55); }
+.confirm-body { margin: 10px 0 0; white-space: pre-line; color: var(--text); }
 .review-shell { display: flex; flex-direction: column; max-height: 88vh; }
 .review-head { padding: 18px 20px; border-bottom: 1px solid var(--border); }
 .review-head h2 { margin: 0; font-size: 15px; }

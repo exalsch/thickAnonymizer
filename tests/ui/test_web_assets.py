@@ -24,6 +24,8 @@ REQUIRED_IDS = [
     # report
     "report", "report-headline", "report-types", "report-files", "report-skipped",
     "report-residual", "report-copy", "report-save",
+    # confirmation dialog
+    "confirm", "confirm-title", "confirm-body", "confirm-yes", "confirm-no",
     # chrome
     "version", "theme-toggle", "banner",
 ]
@@ -68,3 +70,17 @@ def test_page_declares_a_theme_for_both_schemes():
     assert "prefers-color-scheme: dark" in css
     assert ':root[data-theme="dark"]' in css
     assert ':root[data-theme="light"]' in css
+
+
+def test_no_native_blocking_dialogs():
+    # window.confirm/alert/prompt block the whole WebView2 renderer, which is
+    # indistinguishable from a frozen app if the dialog is not visible.
+    js = _read("app.js")
+    for banned in ("window.confirm(", "window.alert(", "window.prompt("):
+        assert banned not in js, f"{banned} blocks the renderer"
+
+
+def test_confirm_dialog_exists():
+    html = _read("index.html")
+    for element_id in ("confirm", "confirm-title", "confirm-body", "confirm-yes", "confirm-no"):
+        assert f'id="{element_id}"' in html, f"#{element_id} is missing"
