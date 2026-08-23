@@ -295,3 +295,15 @@ def test_apply_does_not_recreate_a_file_deleted_after_the_scan(tmp_path):
 
     assert not f.exists()
     assert "changed on disk" in report.skipped[str(f)]
+
+
+def test_counts_break_down_by_band(tmp_path):
+    f = _write(tmp_path / "n.txt", "mail jane@acme.com about intranet.example.com")
+    scan = scan_paths([f], tmp_path, AnonymizeConfig(mode=ReviewMode.QUICK_REVIEW))
+    counts = scan.counts()
+    # EMAIL is confident, HOST is not.
+    assert counts["auto_by_type"].get("EMAIL") == 1
+    assert counts["review_by_type"].get("HOST") == 1
+    assert "HOST" not in counts["auto_by_type"]
+    assert sum(counts["auto_by_type"].values()) == counts["auto"]
+    assert sum(counts["review_by_type"].values()) == counts["review"]

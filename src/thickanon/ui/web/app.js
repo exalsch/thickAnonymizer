@@ -15,6 +15,7 @@ const state = {
   files: [],
   env: null,
   scanId: null,
+  scanCounts: null,
   review: [],
   reviewTotal: 0,
   reviewTruncated: false,
@@ -268,6 +269,7 @@ async function doScan() {
     const res = await api().scan(collectOpts());
     if (!res.ok) { banner(res.error); return; }
     state.scanId = res.scan_id;
+    state.scanCounts = res.counts;
     state.review = res.review || [];
     state.reviewTotal = res.review_total || 0;
     state.reviewTruncated = !!res.review_truncated;
@@ -314,13 +316,19 @@ function summariseScan(scan) {
   return parts.join(', ');
 }
 
+function describeTypes(byType) {
+  const entries = Object.entries(byType || {}).sort((a, b) => b[1] - a[1]);
+  if (!entries.length) { return 'nothing'; }
+  return entries.map(([type, n]) => `${type} ${n}`).join(', ');
+}
+
 async function confirmAndApply(scan) {
   const target = $('backup-enabled').checked
     ? 'Originals are backed up first.'
     : 'Originals are overwritten with no backup.';
   const ok = await askConfirm(
     'Write these changes?',
-    `${summariseScan(scan)}.\n\n${target}`,
+    `${summariseScan(scan)}.\n\nReplacing automatically: ${describeTypes(scan.counts.auto_by_type)}.\n\n${target}`,
     'Write changes'
   );
   if (!ok) {
@@ -365,6 +373,10 @@ async function doDeanonymize() {
 function openReview(scan) {
   $('review-count').textContent =
     `${state.reviewTotal} detection${state.reviewTotal === 1 ? '' : 's'} were not confident enough to replace automatically. Everything ticked will be replaced.`;
+  const autoLine = describeTypes(state.scanCounts && state.scanCounts.auto_by_type);
+  $('review-auto').textContent = autoLine === 'nothing'
+    ? 'Nothing else is being replaced automatically.'
+    : `Also being replaced automatically, without being listed here: ${autoLine}.`;
   const truncated = $('review-truncated');
   if (state.reviewTruncated) {
     truncated.textContent =

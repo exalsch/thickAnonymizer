@@ -19,7 +19,7 @@ REQUIRED_IDS = [
     # progress
     "progress", "progress-bar", "progress-label", "progress-file",
     # review
-    "review", "review-groups", "review-count", "review-approve-all",
+    "review", "review-groups", "review-count", "review-auto", "review-approve-all",
     "review-reject-all", "review-apply", "review-cancel", "review-truncated",
     # report
     "report", "report-headline", "report-types", "report-files", "report-skipped",

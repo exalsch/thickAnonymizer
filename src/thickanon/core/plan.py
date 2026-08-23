@@ -115,20 +115,27 @@ class ScanResult:
 
     def counts(self) -> dict:
         by_type: dict[str, int] = {}
+        auto_by_type: dict[str, int] = {}
+        review_by_type: dict[str, int] = {}
         auto = review = 0
         for f in self.files:
             for c in f.candidates:
-                by_type[c.entity.entity_type] = by_type.get(c.entity.entity_type, 0) + 1
+                etype = c.entity.entity_type
+                by_type[etype] = by_type.get(etype, 0) + 1
                 if c.band == "auto":
                     auto += 1
+                    auto_by_type[etype] = auto_by_type.get(etype, 0) + 1
                 else:
                     review += 1
+                    review_by_type[etype] = review_by_type.get(etype, 0) + 1
         return {
             "files": len(self.files),
             "skipped": len(self.skipped),
             "auto": auto,
             "review": review,
             "by_type": by_type,
+            "auto_by_type": auto_by_type,
+            "review_by_type": review_by_type,
         }
 
     def warnings(self) -> list[str]:

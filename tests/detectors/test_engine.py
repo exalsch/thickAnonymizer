@@ -63,3 +63,32 @@ def test_resolve_overlaps_keeps_the_highest_score_and_is_ordered():
     c = Entity(20, 30, "IP", 0.7, "z")
     kept = _resolve_overlaps([b, c, a])
     assert kept == [a, c]
+
+
+def test_a_tie_prefers_the_specific_recogniser_over_date_time():
+    from thickanon.detectors.engine import _resolve_overlaps
+    from thickanon.core.types import Entity
+
+    ip = Entity(0, 8, "IP", 0.85, "10.0.0.7")
+    date = Entity(0, 8, "DATE_TIME", 0.85, "10.0.0.7")
+    # Same span, same score, both orders must give the same winner.
+    assert _resolve_overlaps([date, ip])[0].entity_type == "IP"
+    assert _resolve_overlaps([ip, date])[0].entity_type == "IP"
+
+
+def test_a_deny_list_term_wins_a_tie():
+    from thickanon.detectors.engine import _resolve_overlaps
+    from thickanon.core.types import Entity
+
+    term = Entity(0, 5, "TERM", 0.9, "Acme")
+    org = Entity(0, 5, "ORGANIZATION", 0.9, "Acme")
+    assert _resolve_overlaps([org, term])[0].entity_type == "TERM"
+
+
+def test_a_higher_score_still_beats_priority():
+    from thickanon.detectors.engine import _resolve_overlaps
+    from thickanon.core.types import Entity
+
+    weak_ip = Entity(0, 8, "IP", 0.4, "10.0.0.7")
+    strong_date = Entity(0, 8, "DATE_TIME", 0.9, "10.0.0.7")
+    assert _resolve_overlaps([weak_ip, strong_date])[0].entity_type == "DATE_TIME"

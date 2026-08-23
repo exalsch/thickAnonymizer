@@ -22,6 +22,26 @@ def _base_analyzer(language: str) -> AnalyzerEngine:
     return AnalyzerEngine(registry=registry, supported_languages=[language])
 
 
+# When two candidates tie on score for the same span, prefer the recogniser
+# that is specific about what it matched. A structured pattern like an IP or
+# an IBAN knows what it found; DATE_TIME matching a bare ticket number does
+# not. Lower sorts first, so lower wins.
+_TYPE_PRIORITY = {
+    "EMAIL": 0,
+    "IP": 0,
+    "IBAN": 0,
+    "CREDIT_CARD": 0,
+    "HOST": 1,
+    "PHONE": 1,
+    "TERM": 0,
+    "PERSON": 2,
+    "LOCATION": 3,
+    "ORGANIZATION": 3,
+    "DATE_TIME": 5,
+}
+_DEFAULT_PRIORITY = 4
+
+
 def _resolve_overlaps(results) -> list:
     """Keep highest-score span; drop spans contained in / overlapping a kept one.
 
@@ -32,7 +52,15 @@ def _resolve_overlaps(results) -> list:
     """
     import bisect
 
-    ordered = sorted(results, key=lambda r: (-r.score, r.start, -(r.end - r.start)))
+    ordered = sorted(
+        results,
+        key=lambda r: (
+            -r.score,
+            _TYPE_PRIORITY.get(r.entity_type, _DEFAULT_PRIORITY),
+            r.start,
+            -(r.end - r.start),
+        ),
+    )
     starts, kept = [], []
     for r in ordered:
         i = bisect.bisect_left(starts, r.start)
