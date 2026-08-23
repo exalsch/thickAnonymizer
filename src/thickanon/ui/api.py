@@ -6,6 +6,7 @@ import importlib.util
 import json
 import os
 import platform
+import queue
 import threading
 import uuid
 from pathlib import Path
@@ -178,18 +179,43 @@ class Api:
         self._scan_id = None
         self._cancel = threading.Event()
         self._cancel_lock = threading.Lock()
+        # Pushes to the page go through one background thread. evaluate_js
+        # blocks its caller until the page replies, and _emit is called from
+        # pywebview's own drop-event thread and from scan/apply workers, so a
+        # slow or stuck page must never be able to wedge those.
+        self._events = queue.Queue(maxsize=256)
+        self._emitter = threading.Thread(target=self._drain_events, daemon=True)
+        self._emitter.start()
 
     # ----- page -> python events -------------------------------------------
+    def _drain_events(self) -> None:
+        """Deliver queued page events, one at a time, forever."""
+        while True:
+            name, payload = self._events.get()
+            window = self.window
+            if window is None:
+                continue
+            try:
+                window.evaluate_js(
+                    "window.thickanon && window.thickanon.on("
+                    f"{json.dumps(name)}, {json.dumps(payload)})"
+                )
+            except Exception:
+                # A failed push is not worth taking the app down for; the next
+                # one will carry fresher state anyway.
+                pass
+
     def _emit(self, name: str, payload: dict) -> None:
-        """Push an event to the page from a worker thread. Best effort."""
+        """Queue an event for the page. Never blocks the caller.
+
+        Progress and file-drop notifications are fire and forget: dropping one
+        under load is far better than blocking a native event handler.
+        """
         if self.window is None:
             return
         try:
-            self.window.evaluate_js(
-                "window.thickanon && window.thickanon.on("
-                f"{json.dumps(name)}, {json.dumps(payload)})"
-            )
-        except Exception:
+            self._events.put_nowait((name, payload))
+        except queue.Full:
             pass
 
     def _progress(self):

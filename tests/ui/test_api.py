@@ -465,3 +465,73 @@ def test_an_unknown_review_mode_gives_a_readable_error(tmp_path):
     result = Api().scan({"files": [str(f)], "root": str(root), "mode": "x"})
     assert result["ok"] is False
     assert "unknown review mode" in result["error"]
+
+
+def test_emit_does_not_block_the_caller(monkeypatch):
+    # _emit is called from pywebview's drop-event thread. If it blocked, a
+    # slow page would wedge a native event handler.
+    import threading as _threading
+    import time as _time
+
+    released = _threading.Event()
+
+    class SlowWindow:
+        def evaluate_js(self, code):
+            released.wait(5)  # simulate a page that is not answering
+            return None
+
+    api = Api()
+    api.window = SlowWindow()
+
+    started = _time.perf_counter()
+    for i in range(10):
+        api._emit("progress", {"done": i, "total": 10, "path": "x", "stage": "scan"})
+    elapsed = _time.perf_counter() - started
+
+    assert elapsed < 0.5, f"_emit blocked the caller for {elapsed:.2f}s"
+    released.set()
+
+
+def test_emit_delivers_events_to_the_page():
+    import time as _time
+
+    seen = []
+
+    class Window:
+        def evaluate_js(self, code):
+            seen.append(code)
+            return None
+
+    api = Api()
+    api.window = Window()
+    api._emit("files", {"paths": ["a.txt"]})
+
+    deadline = _time.time() + 5
+    while not seen and _time.time() < deadline:
+        _time.sleep(0.01)
+    assert len(seen) == 1
+    assert "window.thickanon" in seen[0]
+    assert "a.txt" in seen[0]
+
+
+def test_emit_drops_events_rather_than_growing_without_bound():
+    # A wedged page must not let the queue grow until memory runs out.
+    import threading as _threading
+
+    blocked = _threading.Event()
+
+    class DeadWindow:
+        def evaluate_js(self, code):
+            blocked.wait(30)
+
+    api = Api()
+    api.window = DeadWindow()
+    for i in range(2000):
+        api._emit("progress", {"i": i})   # must not raise, must not hang
+    assert api._events.qsize() <= 256
+    blocked.set()
+
+
+def test_emit_is_a_noop_without_a_window():
+    api = Api()
+    api._emit("progress", {"done": 1})  # window is None; must not raise

@@ -182,3 +182,34 @@ def test_wire_drop_registers_the_drop_handler():
 
     _wire_drop(Window(), object())
     assert len(registered) == 1
+
+
+def test_on_drop_never_raises_into_pywebview():
+    # The handler runs on pywebview's event thread; an exception escaping it
+    # would surface inside native code.
+    from thickanon.ui.app import _wire_drop
+
+    captured = {}
+
+    class Events:
+        def __init__(self): self.drop = self
+        def __iadd__(self, handler): captured["handler"] = handler; return self
+
+    class Element:
+        def __init__(self): self.events = Events()
+
+    class Dom:
+        def get_element(self, selector): return Element()
+
+    class Window:
+        dom = Dom()
+
+    class ExplodingApi:
+        def on_files_dropped(self, paths):
+            raise RuntimeError("boom")
+
+    _wire_drop(Window(), ExplodingApi())
+    handler = captured["handler"]
+    # DOMEventHandler wraps the callback; reach the callable it holds.
+    callback = getattr(handler, "callback", handler)
+    callback({"dataTransfer": {"files": [{"name": "a.txt", "pywebviewFullPath": "C:/a.txt"}]}})

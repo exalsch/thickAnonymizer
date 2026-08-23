@@ -106,7 +106,12 @@ def dropped_paths(event) -> list[str]:
 
 def _wire_drop(window, api: Api) -> None:
     def on_drop(event):
-        api.on_files_dropped(dropped_paths(event))
+        try:
+            api.on_files_dropped(dropped_paths(event))
+        except Exception as exc:
+            # This runs on pywebview's event thread; an exception escaping here
+            # would surface as an unhandled error inside native code.
+            print(f"warning: could not handle the dropped files: {exc}", file=sys.stderr)
 
     try:
         element = window.dom.get_element("#drop")
