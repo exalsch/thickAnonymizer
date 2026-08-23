@@ -82,8 +82,19 @@ function askConfirm(title, message, confirmLabel) {
     $('confirm-yes').addEventListener('click', onYes);
     $('confirm-no').addEventListener('click', onNo);
     dialog.addEventListener('cancel', onCancel);
-    dialog.showModal();
+    openModal(dialog);
   });
+}
+
+function openModal(dialog) {
+  // showModal() throws InvalidStateError on an already-open dialog. That
+  // rejection would surface as a dead app: no overlay, no error, buttons
+  // already re-enabled.
+  try {
+    if (!dialog.open) { dialog.showModal(); }
+  } catch (err) {
+    banner('Could not open the dialog: ' + err.message);
+  }
 }
 
 function basename(path) {
@@ -363,7 +374,7 @@ function openReview(scan) {
     truncated.hidden = true;
   }
   renderReviewGroups();
-  $('review').showModal();
+  openModal($('review'));
 }
 
 function renderReviewGroups() {
@@ -645,6 +656,9 @@ function bind() {
     $('review').close();
     banner('Review cancelled. Nothing was written. Scan again when you are ready.', 'info');
   });
+  $('review').addEventListener('cancel', () => {
+    banner('Review cancelled. Nothing was written. Scan again when you are ready.', 'info');
+  });
   $('review-apply').addEventListener('click', async () => {
     const approveAll = state.reviewTruncated && state.approved.size === state.review.length;
     // Close the review before anything else: showModal() on a second dialog
@@ -661,7 +675,7 @@ function bind() {
         'Continue anyway'
       );
       // Reopen the review rather than dumping the user out of it.
-      if (!ok) { $('review').showModal(); return; }
+      if (!ok) { openModal($('review')); return; }
     }
     await doApply([...state.approved], approveAll);
   });

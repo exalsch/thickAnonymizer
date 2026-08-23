@@ -84,3 +84,18 @@ def test_confirm_dialog_exists():
     html = _read("index.html")
     for element_id in ("confirm", "confirm-title", "confirm-body", "confirm-yes", "confirm-no"):
         assert f'id="{element_id}"' in html, f"#{element_id} is missing"
+
+
+def test_show_modal_is_always_guarded():
+    # showModal() on an already-open dialog throws InvalidStateError, which
+    # would reject the calling async function and leave a dead-looking app.
+    js = _read("app.js")
+    assert js.count(".showModal(") == 1, (
+        "every showModal call must go through openModal(), which guards dialog.open"
+    )
+    assert "function openModal(" in js
+
+
+def test_escape_on_the_review_overlay_is_handled():
+    js = _read("app.js")
+    assert "addEventListener('cancel'" in js
