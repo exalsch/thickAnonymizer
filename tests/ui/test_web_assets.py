@@ -27,7 +27,7 @@ REQUIRED_IDS = [
     # confirmation dialog
     "confirm", "confirm-title", "confirm-body", "confirm-yes", "confirm-no",
     # chrome
-    "version", "theme-toggle", "banner",
+    "version", "theme-toggle", "banner", "busy", "supported", "output", "choose-output",
 ]
 
 
@@ -99,3 +99,25 @@ def test_show_modal_is_always_guarded():
 def test_escape_on_the_review_overlay_is_handled():
     js = _read("app.js")
     assert "addEventListener('cancel'" in js
+
+
+def test_every_bridge_call_goes_through_the_busy_wrapper():
+    # A bridge call made directly would show no indicator, which is the whole
+    # point of the wrapper.
+    js = _read("app.js")
+    direct = [line.strip() for line in js.splitlines() if "api()." in line]
+    allowed_markers = ("bridge[method]", "if (!api())", "const bridge = api()")
+    offenders = [line for line in direct
+                 if not any(marker in line for marker in allowed_markers)]
+    assert offenders == [], f"bridge calls bypassing call(): {offenders}"
+
+
+def test_busy_indicator_respects_reduced_motion():
+    css = _read("app.css")
+    assert "prefers-reduced-motion" in css
+
+
+def test_output_field_warns_it_must_be_outside_the_root():
+    html = _read("index.html")
+    assert 'id="output"' in html
+    assert "outside the root folder" in html

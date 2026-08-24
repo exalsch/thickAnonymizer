@@ -17,6 +17,7 @@
     </div>
   </div>
   <div class="topbar-actions">
+    <span id="busy" class="busy" hidden>Working...</span>
     <span id="version" class="version"></span>
     <button id="theme-toggle" class="btn ghost small" type="button">Theme</button>
   </div>
@@ -39,6 +40,7 @@
       <span id="file-count" class="muted" aria-live="polite"></span>
     </div>
     <ul id="files" class="chips"></ul>
+    <p id="supported" class="hint"></p>
   </section>
 
   <section class="card">
@@ -80,6 +82,15 @@
         <button id="choose-backup" class="btn ghost" type="button">Choose...</button>
       </div>
       <p class="hint">Files are edited in place. With backups off, the originals are gone.</p>
+    </div>
+
+    <div class="field">
+      <label for="output">Output folder <span class="muted">(optional, leave empty to edit files in place)</span></label>
+      <div class="with-button">
+        <input id="output" type="text" placeholder="(empty: the original files are edited)" spellcheck="false">
+        <button id="choose-output" class="btn ghost" type="button">Choose...</button>
+      </div>
+      <p class="hint">With an output folder set, your originals are never touched: anonymized copies are written here, keeping the folder structure. Must be outside the root folder.</p>
     </div>
 
     <div class="grid">

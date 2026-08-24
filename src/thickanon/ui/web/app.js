@@ -32,17 +32,39 @@ const DETECTION_INPUTS = ['mode', 'deny', 'gliner', 'gliner-labels', 'gliner-thr
 const LOCKED_WHILE_BUSY = [
   'browse-files', 'browse-folder', 'clear-files', 'choose-mapping', 'choose-backup',
   'mode', 'root', 'mapping', 'backup-enabled', 'deny', 'pass', 'pass-confirm',
-  'gliner', 'gliner-labels', 'gliner-threshold', 'gliner-gpu', 'download-model'
+  'gliner', 'gliner-labels', 'gliner-threshold', 'gliner-gpu', 'download-model',
+  'output', 'choose-output'
 ];
 
 const GLINER_CONTROLS = ['gliner', 'gliner-labels', 'gliner-threshold', 'gliner-gpu', 'download-model'];
 
-const DERIVED_PATH_IDS = ['root', 'mapping', 'backup'];
+const DERIVED_PATH_IDS = ['root', 'mapping', 'backup', 'output'];
 
 /* ---------- small helpers ---------- */
 
 function api() {
   return (window.pywebview && window.pywebview.api) || null;
+}
+
+let inflight = 0;
+
+function updateBusy() {
+  $('busy').hidden = inflight === 0;
+}
+
+async function call(method, ...args) {
+  // Every bridge call is a round trip that can be slow, so all of them show
+  // the indicator rather than only the ones we happen to expect to be slow.
+  const bridge = api();
+  if (!bridge) { return null; }
+  inflight += 1;
+  updateBusy();
+  try {
+    return await bridge[method](...args);
+  } finally {
+    inflight -= 1;
+    updateBusy();
+  }
 }
 
 function banner(message, kind) {
@@ -201,7 +223,7 @@ function resetDerivedPaths(force) {
 
 async function applyDefaults() {
   if (!state.files.length || !api()) { return; }
-  const res = await api().suggest_defaults(state.files, $('root').value);
+  const res = await call('suggest_defaults', state.files, $('root').value);
   if (!res || !res.ok) { return; }
   if (!$('root').value && res.root) { $('root').value = res.root; }
   if (!$('mapping').value && res.mapping) { $('mapping').value = res.mapping; }
@@ -219,6 +241,7 @@ function collectOpts() {
     deny: $('deny').value,
     backup_enabled: $('backup-enabled').checked,
     backup: $('backup').value,
+    output: $('output').value,
     passphrase: $('pass').value,
     gliner: $('gliner').checked,
     gliner_labels: $('gliner-labels').value,
@@ -266,8 +289,8 @@ async function doScan() {
   $('report').hidden = true;
   setBusy(true);
   try {
-    const res = await api().scan(collectOpts());
-    if (!res.ok) { banner(res.error); return; }
+    const res = await call('scan', collectOpts());
+    if (!res || !res.ok) { banner(res && res.error); return; }
     state.scanId = res.scan_id;
     state.scanCounts = res.counts;
     state.review = res.review || [];
@@ -323,9 +346,12 @@ function describeTypes(byType) {
 }
 
 async function confirmAndApply(scan) {
-  const target = $('backup-enabled').checked
-    ? 'Originals are backed up first.'
-    : 'Originals are overwritten with no backup.';
+  const output = $('output').value.trim();
+  const target = output
+    ? `Anonymized copies go to ${output}. Your original files are not modified.`
+    : ($('backup-enabled').checked
+        ? 'Originals are edited in place. They are backed up first.'
+        : 'Originals are overwritten in place with no backup.');
   const ok = await askConfirm(
     'Write these changes?',
     `${summariseScan(scan)}.\n\nReplacing automatically: ${describeTypes(scan.counts.auto_by_type)}.\n\n${target}`,
@@ -344,9 +370,9 @@ async function doApply(approvedIds, approveAll) {
   try {
     const opts = collectOpts();
     opts.approve_all = !!approveAll;
-    const res = await api().apply(state.scanId, approvedIds, opts);
+    const res = await call('apply', state.scanId, approvedIds, opts);
     state.scanId = null;
-    if (!res.ok) { banner(res.error); return; }
+    if (!res || !res.ok) { banner(res && res.error); return; }
     renderReport(res, 'anonymize');
   } finally {
     setBusy(false);
@@ -360,8 +386,8 @@ async function doDeanonymize() {
   $('report').hidden = true;
   setBusy(true);
   try {
-    const res = await api().deanonymize(collectOpts());
-    if (!res.ok) { banner(res.error); return; }
+    const res = await call('deanonymize', collectOpts());
+    if (!res || !res.ok) { banner(res && res.error); return; }
     renderReport(res, 'deanonymize');
   } finally {
     setBusy(false);
@@ -548,6 +574,7 @@ function renderReport(res, kind) {
 
     const extra = [];
     if (res.mapping_path) { extra.push('Mapping saved to: ' + res.mapping_path); }
+    if (res.output_root) { extra.push('Anonymized copies written to: ' + res.output_root); }
     if (res.backup_root) { extra.push('Originals backed up to: ' + res.backup_root); }
     banner(extra.join('   |   '), 'info');
   } else {
@@ -601,8 +628,8 @@ async function copyReport() {
 
 async function saveReport() {
   if (!state.report || !api()) { return; }
-  const res = await api().save_report(state.report, 'thickanon-report.json');
-  if (!res.ok) { banner(res.error); return; }
+  const res = await call('save_report', state.report, 'thickanon-report.json');
+  if (!res || !res.ok) { banner(res && res.error); return; }
   if (res.path) { banner('Report saved to: ' + res.path, 'info'); }
 }
 
@@ -622,7 +649,7 @@ function toggleTheme() {
 }
 
 async function saveSettings() {
-  if (api()) { await api().save_settings(persistableSettings()); }
+  await call('save_settings', persistableSettings());
 }
 
 /* ---------- start-up ---------- */
@@ -638,9 +665,10 @@ function bind() {
   });
   $('choose-mapping').addEventListener('click', chooseMapping);
   $('choose-backup').addEventListener('click', chooseBackup);
+  $('choose-output').addEventListener('click', chooseOutput);
   $('scan').addEventListener('click', doScan);
   $('deanonymize').addEventListener('click', doDeanonymize);
-  $('cancel').addEventListener('click', () => api() && api().cancel());
+  $('cancel').addEventListener('click', () => { call('cancel'); });
   $('download-model').addEventListener('click', downloadModel);
   $('theme-toggle').addEventListener('click', toggleTheme);
   $('report-copy').addEventListener('click', copyReport);
@@ -711,14 +739,14 @@ function bind() {
 
 async function browse(kind) {
   if (!api()) { return; }
-  const res = kind === 'folder' ? await api().pick_folder() : await api().pick_files();
+  const res = kind === 'folder' ? await call('pick_folder') : await call('pick_files');
   if (res && res.ok && res.paths) { addFiles(res.paths); }
 }
 
 async function chooseMapping() {
   if (!api()) { return; }
   const suggested = $('mapping').value ? basename($('mapping').value) : 'thickanon-mapping.json';
-  const res = await api().pick_mapping(suggested);
+  const res = await call('pick_mapping', suggested);
   if (res && res.ok && res.path) {
     $('mapping').value = res.path;
     // Assigning .value fires no input event, so without this the path the
@@ -730,7 +758,7 @@ async function chooseMapping() {
 
 async function chooseBackup() {
   if (!api()) { return; }
-  const res = await api().pick_backup();
+  const res = await call('pick_backup');
   if (res && res.ok && res.paths && res.paths.length) {
     $('backup').value = res.paths[0];
     // Same reason as chooseMapping: a programmatic assignment fires no
@@ -739,10 +767,19 @@ async function chooseBackup() {
   }
 }
 
+async function chooseOutput() {
+  if (!api()) { return; }
+  const res = await call('pick_backup');   // a folder picker; the same dialog serves both
+  if (res && res.ok && res.paths && res.paths.length) {
+    $('output').value = res.paths[0];
+    $('output').dataset.userEdited = 'true';
+  }
+}
+
 async function downloadModel() {
   if (!api()) { return; }
   banner('Downloading the GLiNER model. This can take several minutes.', 'info');
-  const res = await api().download_model();
+  const res = await call('download_model');
   banner(res.ok ? 'GLiNER model is ready.' : res.error, res.ok ? 'info' : '');
 }
 
@@ -755,7 +792,7 @@ async function start() {
     banner('The Python bridge is not available. Start the app with the thickAnonymizer executable.');
     return;
   }
-  const env = await api().environment();
+  const env = await call('environment');
   if (!env || !env.ok) {
     // A failed probe must not abort start-up: the controls it gates default to
     // unavailable, which is the safe direction on a build with no backend.
@@ -765,7 +802,15 @@ async function start() {
   } else {
     state.env = env;
   }
-  $('version').textContent = 'v' + (state.env.version || '?');
+  $('version').textContent = `v${state.env.version || '?'} - built ${state.env.built || 'unknown'}`;
+  $('version').title = state.env.frozen
+    ? 'Packaged build. The date is when this exe was built.'
+    : 'Running from source, so there is no build date.';
+
+  const exts = (state.env.supported_extensions || []);
+  $('supported').textContent = exts.length
+    ? `Reads and writes: ${exts.join('  ')}. Anything else is listed as skipped rather than silently ignored.`
+    : '';
 
   const advanced = $('advanced');
   state.glinerAvailable = !!state.env.gliner.available;
@@ -777,7 +822,7 @@ async function start() {
     $('gliner-note').textContent = 'Slower and heavier than the default detector, but catches more names and organisations.';
   }
 
-  const saved = await api().load_settings();
+  const saved = await call('load_settings');
   const s = (saved && saved.settings) || {};
   // Only restore a mode the dropdown actually offers. Assigning an unknown
   // value blanks a <select>, and a blank mode makes every scan fail.
