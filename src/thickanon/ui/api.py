@@ -196,7 +196,11 @@ def save_mapping_or_rescue(mapping, mapping_path, passphrase):
 
 class Api:
     def __init__(self):
-        self.window = None  # set by app.run() after the window is created
+        # Underscored on purpose: pywebview walks dir() of this object to build
+        # the JS bridge and recurses into every public non-callable attribute,
+        # so a public reference here sends it getattr-ing through the whole
+        # native WebView2 control tree from the wrong thread.
+        self._window = None  # set by app.run() after the window is created
         self._scan = None
         self._scan_id = None
         self._cancel = threading.Event()
@@ -214,7 +218,7 @@ class Api:
         """Deliver queued page events, one at a time, forever."""
         while True:
             name, payload = self._events.get()
-            window = self.window
+            window = self._window
             if window is None:
                 continue
             try:
@@ -233,7 +237,7 @@ class Api:
         Progress and file-drop notifications are fire and forget: dropping one
         under load is far better than blocking a native event handler.
         """
-        if self.window is None:
+        if self._window is None:
             return
         try:
             self._events.put_nowait((name, payload))
@@ -275,27 +279,27 @@ class Api:
     # ----- dialogs (require a live window; no-op when headless) -------------
     def pick_files(self) -> dict:
         try:
-            if self.window is None:
+            if self._window is None:
                 return {"ok": False, "error": "no window"}
-            result = self.window.create_file_dialog(webview.FileDialog.OPEN, allow_multiple=True)
+            result = self._window.create_file_dialog(webview.FileDialog.OPEN, allow_multiple=True)
             return {"ok": True, "paths": [str(p) for p in result] if result else []}
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
 
     def pick_folder(self) -> dict:
         try:
-            if self.window is None:
+            if self._window is None:
                 return {"ok": False, "error": "no window"}
-            result = self.window.create_file_dialog(webview.FileDialog.FOLDER)
+            result = self._window.create_file_dialog(webview.FileDialog.FOLDER)
             return {"ok": True, "paths": [str(p) for p in result] if result else []}
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
 
     def pick_mapping(self, suggested_name="mapping.json") -> dict:
         try:
-            if self.window is None:
+            if self._window is None:
                 return {"ok": False, "error": "no window"}
-            result = self.window.create_file_dialog(
+            result = self._window.create_file_dialog(
                 webview.FileDialog.SAVE, save_filename=suggested_name
             )
             # SAVE may return a str or a 1-tuple depending on platform/version
@@ -314,9 +318,9 @@ class Api:
 
     def save_report(self, report, suggested_name="thickanon-report.json") -> dict:
         """Write a finished report to a file the user chooses."""
-        if self.window is None:
+        if self._window is None:
             return {"ok": False, "error": "no window"}
-        result = self.window.create_file_dialog(
+        result = self._window.create_file_dialog(
             webview.FileDialog.SAVE, save_filename=suggested_name
         )
         if not result:

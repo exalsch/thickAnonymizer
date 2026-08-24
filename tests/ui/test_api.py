@@ -329,7 +329,7 @@ def test_save_report_writes_json(tmp_path):
             return (str(tmp_path / "r.json"),)
 
     api = Api()
-    api.window = FakeWindow()
+    api._window = FakeWindow()
     result = api.save_report({"totals": {"IP": 2}}, "r.json")
     assert result["ok"] is True
     assert json.loads(Path(result["path"]).read_text(encoding="utf-8")) == {"totals": {"IP": 2}}
@@ -522,7 +522,7 @@ def test_emit_does_not_block_the_caller(monkeypatch):
             return None
 
     api = Api()
-    api.window = SlowWindow()
+    api._window = SlowWindow()
 
     started = _time.perf_counter()
     for i in range(10):
@@ -544,7 +544,7 @@ def test_emit_delivers_events_to_the_page():
             return None
 
     api = Api()
-    api.window = Window()
+    api._window = Window()
     api._emit("files", {"paths": ["a.txt"]})
 
     deadline = _time.time() + 5
@@ -566,7 +566,7 @@ def test_emit_drops_events_rather_than_growing_without_bound():
             blocked.wait(30)
 
     api = Api()
-    api.window = DeadWindow()
+    api._window = DeadWindow()
     for i in range(2000):
         api._emit("progress", {"i": i})   # must not raise, must not hang
     assert api._events.qsize() <= 256
@@ -576,3 +576,29 @@ def test_emit_drops_events_rather_than_growing_without_bound():
 def test_emit_is_a_noop_without_a_window():
     api = Api()
     api._emit("progress", {"done": 1})  # window is None; must not raise
+
+
+def test_api_hides_the_window_from_pywebviews_bridge_walk():
+    """No public non-callable attribute may hang off Api.
+
+    To build window.pywebview, pywebview walks dir() of the js_api object,
+    skips names starting with an underscore, and recurses into every public
+    attribute that is a non-callable object. A public reference to the Window
+    therefore sends it getattr-ing through the entire native WebView2 control
+    tree from a non-UI thread: dozens of cross-thread COM failures on every
+    page load, and an app that intermittently froze on start-up and never
+    recovered. Keeping the window underscored is what stops that walk, so pin
+    the rule rather than the single attribute name.
+    """
+    from thickanon.ui.api import Api
+
+    api = Api()
+    api._window = object()  # what app.run() does
+
+    offenders = [
+        name for name in dir(api)
+        if not name.startswith("_") and not callable(getattr(api, name))
+    ]
+    assert offenders == [], (
+        f"pywebview will recurse into these public attributes: {offenders}"
+    )

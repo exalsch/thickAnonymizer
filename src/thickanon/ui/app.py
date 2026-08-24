@@ -144,7 +144,7 @@ def run() -> int:
         "thickAnonymizer", url=html.as_uri(), js_api=api,
         width=1060, height=840, min_size=(760, 620),
     )
-    api.window = window  # let the bridge open dialogs and push progress
+    api._window = window  # let the bridge open dialogs and push progress
 
     finished = threading.Event()
 
