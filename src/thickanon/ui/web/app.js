@@ -802,7 +802,11 @@ async function start() {
   } else {
     state.env = env;
   }
-  $('version').textContent = `v${state.env.version || '?'} - built ${state.env.built || 'unknown'}`;
+  // A packaged build has a real build date; a source run has none, so say
+  // that plainly instead of printing "built development build".
+  $('version').textContent = state.env.frozen
+    ? `v${state.env.version || '?'} - built ${state.env.built || 'unknown'}`
+    : `v${state.env.version || '?'} - development build`;
   $('version').title = state.env.frozen
     ? 'Packaged build. The date is when this exe was built.'
     : 'Running from source, so there is no build date.';
