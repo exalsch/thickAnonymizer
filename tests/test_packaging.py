@@ -103,3 +103,24 @@ def test_splash_does_not_float_above_every_other_window():
     values = {k.arg: k.value for k in splash.keywords}
     assert "always_on_top" in values, "always_on_top is not set, so it defaults to True"
     assert ast.literal_eval(values["always_on_top"]) is False
+
+
+def test_build_script_does_not_delete_dist_up_front():
+    # Removing dist at the start leaves the user with no exe for the ten
+    # minutes the build takes, and nothing at all if it fails.
+    script = (ROOT / "packaging" / "build.ps1").read_text(encoding="utf-8")
+    assert "--distpath" in script, "the build must stage the exe rather than write straight to dist"
+    clean = script.index("Cleaning previous build")
+    promote = script.index("Promoting the verified exe")
+    smoke = script.index("Smoke-testing the exe")
+    assert smoke < promote, "the exe must be verified before it replaces the previous one"
+    assert clean < smoke
+
+
+def test_build_script_smoke_tests_the_staged_exe():
+    script = (ROOT / "packaging" / "build.ps1").read_text(encoding="utf-8")
+    # The thing that gets tested must be the thing that was just built.
+    assert "$staged" in script
+    staged_assign = script.index("$staged = ")
+    smoke = script.index("Smoke-testing the exe")
+    assert staged_assign < smoke

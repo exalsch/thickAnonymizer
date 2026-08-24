@@ -22,26 +22,28 @@ if (-not ((Test-Path (Join-Path $root 'packaging\icon.ico')) -and (Test-Path (Jo
 }
 
 Write-Host 'Cleaning previous build...'
-# Remove the trees wholesale. A partial clean let stale intermediates from an
-# interrupted build survive and silently produce a corrupt one-file exe whose
-# bootloader never extracted.
-foreach ($stale in @('build', 'dist')) {
-    $path = Join-Path $root $stale
-    if (Test-Path $path) { Remove-Item -Recurse -Force $path }
-}
+# Only `build` is removed. Stale intermediates there once silently produced a
+# corrupt one-file exe, so that clean is deliberate. `dist` is left alone: the
+# user's existing working exe must survive both the ten minutes this takes and
+# a failed build.
+$buildDir = Join-Path $root 'build'
+if (Test-Path $buildDir) { Remove-Item -Recurse -Force $buildDir }
+
+$staging = Join-Path $root 'build\staging'
+if (Test-Path $staging) { Remove-Item -Recurse -Force $staging }
 
 Write-Host 'Running PyInstaller (this takes several minutes)...'
-& $python -m PyInstaller --noconfirm (Join-Path $root 'packaging\thickanon.spec')
+& $python -m PyInstaller --noconfirm --distpath $staging (Join-Path $root 'packaging\thickanon.spec')
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed with exit code $LASTEXITCODE" }
 
-$exe = Join-Path $root 'dist\thickAnonymizer.exe'
-if (-not (Test-Path $exe)) { throw "Build reported success but $exe is missing" }
+$staged = Join-Path $staging 'thickAnonymizer.exe'
+if (-not (Test-Path $staged)) { throw "Build reported success but $staged is missing" }
 
 Write-Host 'Smoke-testing the exe...'
 # A one-file exe can build cleanly and still be unable to start, for instance
 # when stale intermediates leave the archive unembedded. Size and SHA256 mean
 # nothing if the binary cannot run, so prove it before reporting them.
-$smokeOut = & $exe --help 2>&1
+$smokeOut = & $staged --help 2>&1
 $smokeCode = $LASTEXITCODE
 if ($smokeCode -ne 0) {
     Write-Host ($smokeOut | Out-String)
@@ -52,6 +54,19 @@ if (($smokeOut | Out-String) -notmatch 'usage: thickanon') {
     throw "The exe ran but did not print the expected CLI usage. The build is not trustworthy."
 }
 Write-Host '  CLI responds correctly.'
+
+Write-Host 'Promoting the verified exe...'
+$distDir = Join-Path $root 'dist'
+if (-not (Test-Path $distDir)) { New-Item -ItemType Directory -Path $distDir | Out-Null }
+$exe = Join-Path $distDir 'thickAnonymizer.exe'
+# The staged exe has already proved it runs, so replacing the previous one is
+# safe. Until this line the user's old exe is untouched.
+try {
+    Move-Item -Force -Path $staged -Destination $exe
+} catch {
+    throw ("Built and verified, but could not replace $exe : $($_.Exception.Message). " +
+           "Close thickAnonymizer if it is running. The new exe is waiting at $staged.")
+}
 
 $sizeMb = [math]::Round((Get-Item $exe).Length / 1MB, 1)
 # Windows PowerShell 5.1 does not ship Get-FileHash on every host, and the
