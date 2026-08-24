@@ -47,6 +47,21 @@ def ensure_backup_outside_root(backup_root, root) -> None:
         )
 
 
+def ensure_output_outside_root(output_root, root) -> None:
+    """Guard: the output folder must live OUTSIDE the root being anonymized.
+
+    Anonymized copies written inside root would be picked up as inputs by the
+    next run over that root. Raises ValueError on violation.
+    """
+    op = Path(output_root).resolve()
+    rt = Path(root).resolve()
+    if op == rt or rt in op.parents:
+        raise ValueError(
+            f"output folder must be outside the root folder: {op} is inside {rt}. "
+            "Choose an output folder in a different directory."
+        )
+
+
 def _approved_ids_from_callback(scan, review_callback) -> set:
     """Replay the legacy per-fragment review callback against a scan.
 

@@ -7,8 +7,10 @@ import json
 import os
 import platform
 import queue
+import sys
 import threading
 import uuid
+from datetime import datetime
 from pathlib import Path
 
 import webview
@@ -20,10 +22,12 @@ from thickanon.core.orchestrator import (
     deanonymize_paths,
     ensure_backup_outside_root,
     ensure_mapping_outside_root,
+    ensure_output_outside_root,
 )
 from thickanon.core.plan import apply_scan, expand_paths, scan_paths
 from thickanon.core.types import AnonymizeConfig, GLiNERConfig, ReviewMode
 from thickanon.detectors import gliner_model
+from thickanon.io.registry import supported_extensions
 
 # Sending tens of thousands of review rows across the bridge would stall the
 # page. Send a window of them and let the UI offer "approve all" for the rest.
@@ -60,6 +64,24 @@ def gliner_availability() -> tuple[bool, str]:
         return False, ("GLiNER is present but its PyTorch runtime is not "
                        "bundled in this build.")
     return True, ""
+
+
+def build_info() -> dict:
+    """Version and build date for the app's About line.
+
+    In a PyInstaller bundle the exe's own modification time IS the build time,
+    which needs no coupling to the build script. From a source checkout there
+    is no build, so say so rather than inventing a date.
+    """
+    frozen = bool(getattr(sys, "frozen", False))
+    built = "development build"
+    if frozen:
+        try:
+            stamp = datetime.fromtimestamp(Path(sys.executable).stat().st_mtime)
+            built = stamp.strftime("%Y-%m-%d %H:%M")
+        except Exception:
+            built = "unknown"
+    return {"version": __version__, "built": built, "frozen": frozen}
 
 
 def infer_root(paths) -> Path | None:
@@ -236,12 +258,16 @@ class Api:
     # ----- environment ------------------------------------------------------
     def environment(self) -> dict:
         try:
+            info = build_info()
             available, reason = gliner_availability()
             return {
                 "ok": True,
                 "version": __version__,
                 "platform": platform.system(),
                 "gliner": {"available": available, "reason": reason},
+                "built": info["built"],
+                "frozen": info["frozen"],
+                "supported_extensions": supported_extensions(),
             }
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
@@ -453,8 +479,13 @@ class Api:
             scan = self._scan
             root_path = scan.root
 
+            output_root = None
+            if str(opts.get("output") or "").strip():
+                output_root = resolve_backup_root(opts["output"], root_path)
+                ensure_output_outside_root(output_root, root_path)
+
             backup_root = None
-            if opts.get("backup_enabled", True):
+            if opts.get("backup_enabled", True) and output_root is None:
                 backup = str(opts.get("backup") or "").strip()
                 if not backup:
                     backup = str(default_backup_for_root(root_path))
@@ -476,6 +507,7 @@ class Api:
             try:
                 report = apply_scan(
                     scan, mapping, approved, backup_root,
+                    output_root=output_root,
                     progress=self._progress(), cancel=cancel_event.is_set,
                 )
             finally:
@@ -488,6 +520,11 @@ class Api:
             mapping_path, mapping_warning = save_mapping_or_rescue(
                 mapping, mapping_path, opts.get("passphrase") or None
             )
+            if output_root is not None and opts.get("backup_enabled", True):
+                mapping_warning = (
+                    "Backups were not made because an output folder was set: your "
+                    "original files were never modified. " + mapping_warning
+                ).strip()
 
             return {
                 "ok": True,
@@ -495,6 +532,7 @@ class Api:
                 "report": report.to_dict(),
                 "mapping_path": str(mapping_path),
                 "backup_root": str(backup_root) if backup_root else "",
+                "output_root": str(output_root) if output_root else "",
                 "cancelled": cancel_event.is_set(),
                 "warning": mapping_warning,
             }

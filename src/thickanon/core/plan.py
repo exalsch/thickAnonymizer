@@ -4,6 +4,7 @@ Splitting the pass in two lets a UI show exactly what will change before any
 file is touched, and lets a human approve gray-band spans in one place instead
 of once per text fragment.
 """
+import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -215,7 +216,7 @@ def scan_paths(paths, root, config: AnonymizeConfig, progress=None, cancel=None)
 
 
 def apply_scan(scan: ScanResult, mapping, approved_ids=None, backup_root=None,
-               progress=None, cancel=None) -> BatchReport:
+               output_root=None, progress=None, cancel=None) -> BatchReport:
     """Write the scan's decisions to disk.
 
     Auto-band candidates are always applied. Review-band candidates are applied
@@ -270,7 +271,16 @@ def apply_scan(scan: ScanResult, mapping, approved_ids=None, backup_root=None,
                 new_fragments.append(new_text)
                 residual_all += residual_scan(new_text)
 
-            get_handler(file_scan.path).write_fragments(file_scan.path, new_fragments)
+            write_target = file_scan.path
+            if output_root is not None:
+                # Copy first, then rewrite the copy. The office handlers reopen
+                # the file they were given, so the destination must already be
+                # a valid document rather than an empty file.
+                write_target = Path(output_root) / file_scan.path.relative_to(scan.root)
+                write_target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(file_scan.path, write_target)
+
+            get_handler(write_target).write_fragments(write_target, new_fragments)
         except Exception as exc:
             report.record_skip(file_scan.path, f"error: {exc}")
             if progress is not None:

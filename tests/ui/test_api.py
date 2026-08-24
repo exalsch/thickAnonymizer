@@ -189,6 +189,47 @@ def test_apply_refuses_an_unwritable_mapping_before_touching_any_file(tmp_path):
     assert "10.0.0.3" in f.read_text(encoding="utf-8")
 
 
+def test_environment_reports_the_build_and_file_types():
+    env = Api().environment()
+    assert env["built"]
+    assert "frozen" in env
+    assert ".docx" in env["supported_extensions"]
+    assert ".txt" in env["supported_extensions"]
+    if not env["frozen"]:
+        assert env["built"] == "development build"
+
+
+def test_apply_to_an_output_folder_does_not_touch_the_original(tmp_path):
+    root, f = _root_with_file(tmp_path)
+    before = f.read_text(encoding="utf-8")
+    out = tmp_path / "out"
+    api = Api()
+    scan = api.scan({"files": [str(f)], "root": str(root), "mode": "auto_redact"})
+    result = api.apply(scan["scan_id"], [], {
+        "mapping": str(tmp_path / "m.json"),
+        "output": str(out),
+    })
+
+    assert result["ok"] is True, result
+    assert f.read_text(encoding="utf-8") == before
+    assert "10.0.0.3" not in (out / "n.txt").read_text(encoding="utf-8")
+    assert result["output_root"] == str(out.resolve())
+    assert "Backups were not made" in result["warning"]
+
+
+def test_apply_rejects_an_output_folder_inside_root(tmp_path):
+    root, f = _root_with_file(tmp_path)
+    api = Api()
+    scan = api.scan({"files": [str(f)], "root": str(root), "mode": "auto_redact"})
+    result = api.apply(scan["scan_id"], [], {
+        "mapping": str(tmp_path / "m.json"),
+        "output": str(root / "out"),
+    })
+    assert result["ok"] is False
+    assert "outside the root" in result["error"]
+    assert "10.0.0.3" in f.read_text(encoding="utf-8")
+
+
 def test_apply_backs_up_by_default(tmp_path):
     root, f = _root_with_file(tmp_path)
     api = Api()

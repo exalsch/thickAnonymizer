@@ -84,6 +84,16 @@ def test_case_only_difference_is_still_inside_root(tmp_path):
         ensure_backup_outside_root(disguised, root)
 
 
+def test_output_inside_root_is_rejected(tmp_path):
+    from thickanon.core.orchestrator import ensure_output_outside_root
+
+    root = tmp_path / "data"
+    root.mkdir()
+    with pytest.raises(ValueError):
+        ensure_output_outside_root(root / "out", root)
+    ensure_output_outside_root(tmp_path / "out", root)
+
+
 def test_backup_file_never_overwrites_an_existing_backup(tmp_path):
     from thickanon.core.backup import backup_file
 

@@ -297,6 +297,39 @@ def test_apply_does_not_recreate_a_file_deleted_after_the_scan(tmp_path):
     assert "changed on disk" in report.skipped[str(f)]
 
 
+def test_output_folder_leaves_the_original_untouched(tmp_path):
+    root = tmp_path / "data"
+    f = _write(root / "sub" / "note.txt", "mail jane@acme.com")
+    out = tmp_path / "out"
+    scan = scan_paths([f], root, AnonymizeConfig(mode=ReviewMode.AUTO_REDACT))
+
+    apply_scan(scan, MappingStore(), output_root=out)
+
+    assert f.read_text(encoding="utf-8") == "mail jane@acme.com"  # original intact
+    written = out / "sub" / "note.txt"
+    assert written.exists(), "the tree structure must be preserved"
+    assert "jane@acme.com" not in written.read_text(encoding="utf-8")
+
+
+def test_output_folder_preserves_a_docx(tmp_path):
+    from docx import Document
+
+    root = tmp_path / "data"
+    root.mkdir()
+    src = root / "d.docx"
+    doc = Document()
+    doc.add_paragraph("mail jane@acme.com")
+    doc.save(str(src))
+    out = tmp_path / "out"
+
+    scan = scan_paths([src], root, AnonymizeConfig(mode=ReviewMode.AUTO_REDACT))
+    apply_scan(scan, MappingStore(), output_root=out)
+
+    assert "jane@acme.com" in Document(str(src)).paragraphs[0].text  # original intact
+    copied = Document(str(out / "d.docx"))
+    assert "jane@acme.com" not in copied.paragraphs[0].text
+
+
 def test_counts_break_down_by_band(tmp_path):
     f = _write(tmp_path / "n.txt", "mail jane@acme.com about intranet.example.com")
     scan = scan_paths([f], tmp_path, AnonymizeConfig(mode=ReviewMode.QUICK_REVIEW))
