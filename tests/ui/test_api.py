@@ -602,3 +602,42 @@ def test_api_hides_the_window_from_pywebviews_bridge_walk():
     assert offenders == [], (
         f"pywebview will recurse into these public attributes: {offenders}"
     )
+
+
+def test_build_info_reports_the_exes_own_timestamp_when_frozen(tmp_path, monkeypatch):
+    """The packaged build date comes from the exe's modification time.
+
+    This is the one branch a source checkout can never exercise, and it is the
+    branch the user actually sees, so fake the bundle rather than leave it
+    unproven: a real file with a known mtime standing in for sys.executable.
+    """
+    import os
+    import sys
+    from datetime import datetime
+
+    from thickanon.ui.api import build_info
+
+    fake_exe = tmp_path / "thickAnonymizer.exe"
+    fake_exe.write_bytes(b"not really an exe")
+    stamp = datetime(2026, 3, 4, 17, 45, 0)
+    os.utime(fake_exe, (stamp.timestamp(), stamp.timestamp()))
+
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(fake_exe))
+
+    info = build_info()
+    assert info["frozen"] is True
+    assert info["built"] == "2026-03-04 17:45"
+    assert info["version"]
+
+
+def test_build_info_says_unknown_when_the_exe_cannot_be_stat_ed(tmp_path, monkeypatch):
+    """A missing executable must not take the About line down with it."""
+    import sys
+
+    from thickanon.ui.api import build_info
+
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "gone.exe"))
+
+    assert build_info()["built"] == "unknown"
