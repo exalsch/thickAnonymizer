@@ -20,8 +20,8 @@ for pkg in ["en_core_web_lg", "presidio_analyzer", "presidio_anonymizer"]:
     d, b, h = collect_all(pkg)
     datas += d; binaries += b; hiddenimports += h
 
-# Optional GLiNER backend: bundle the gliner package (and its CPU torch/transformers/
-# onnxruntime deps) only if installed. The default build excludes torch/transformers
+# Optional GLiNER backend: bundle the gliner package (and onnxruntime, which
+# gliner>=0.2.30 no longer pulls in itself) only if installed. The default build excludes torch/transformers
 # (see _EXCLUDES) for a slim CPU-only exe; to ship GLiNER, install the [gliner] extra
 # AND remove "torch"/"transformers" from _EXCLUDES before building.
 try:

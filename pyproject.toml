@@ -4,19 +4,27 @@ version = "0.1.0"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "Alex Schick" }]
+# Lower bounds are the versions the test suite last passed on (23.11.2026).
+# Exact versions for a reproducible exe build live in requirements-lock.txt.
 dependencies = [
-  "presidio-analyzer",
-  "presidio-anonymizer",
-  "python-docx",
-  "openpyxl",
-  "python-pptx",
-  "cryptography",
-  "pywebview",
+  "presidio-analyzer>=2.2.366",
+  "presidio-anonymizer>=2.2.366",
+  # en_core_web_lg 3.8.0 requires spaCy 3.8.x; a spaCy 3.9 needs a new model.
+  "spacy>=3.8.18,<3.9",
+  "python-docx>=1.2.0",
+  "openpyxl>=3.1.5",
+  "python-pptx>=1.0.2",
+  "cryptography>=50.0.2",
+  "pywebview>=6.2.1",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "pyinstaller"]
-gliner = ["gliner"]
+dev = ["pytest>=9.2.0", "pyinstaller>=6.22.3", "pip-audit>=2.10.1"]
+# protobuf is listed on purpose. gliner 0.2.30 no longer pulls in onnxruntime,
+# which used to bring protobuf along. Without protobuf, transformers cannot
+# convert the sentencepiece tokenizer of microsoft/mdeberta-v3-base, falls
+# back to tiktoken and the GLiNER model fails to load.
+gliner = ["gliner>=0.2.30", "protobuf>=7.36.2"]
 
 [project.scripts]
 thickanon = "thickanon.cli:main"
@@ -25,5 +33,5 @@ thickanon = "thickanon.cli:main"
 where = ["src"]
 
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=84.2.1"]
 build-backend = "setuptools.build_meta"

@@ -14,6 +14,27 @@ before using them with AI tools, then de-anonymize the AI's output back.
     pip install -e ".[dev]"
     python -m spacy download en_core_web_lg
 
+For the exact versions the tests and the exe build were verified with, sync the
+venv from the hashed lock file instead (needs [uv](https://docs.astral.sh/uv/)):
+
+    uv pip sync -p venv\Scripts\python.exe requirements-lock.txt
+    uv pip install -p venv\Scripts\python.exe -e . --no-deps
+
+The lock file includes the spaCy model and the `[dev,gliner]` extras.
+
+### Updating dependencies
+
+1. Regenerate the lock with the command at the top of `requirements-lock.txt`
+   (add `--upgrade` to move every package to its latest compatible version).
+2. Sync the venv as above, then run `python -m pytest -q`. The real-model GLiNER
+   test runs automatically when the default model is in the Hugging Face cache.
+3. Run `python -m pip_audit -l` and expect "No known vulnerabilities found".
+4. Raise the lower bounds in `pyproject.toml` to the versions you verified.
+
+`en_core_web_lg` is pinned to 3.8.0 and needs spaCy 3.8.x, so `pyproject.toml`
+caps spaCy below 3.9. Moving to a new spaCy minor version needs the matching model
+version in `packaging/spacy-model.in`.
+
 ## CLI
     thickanon anonymize C:\data --root C:\data --mapping C:\keys\map.json --mode quick_review
     thickanon deanonymize C:\data --mapping C:\keys\map.json
@@ -102,8 +123,9 @@ Install the extra:
     # or just the runtime:
     pip install gliner
 
-This pulls the `gliner` package plus onnxruntime, transformers, and CPU-only PyTorch
-(~200 MB), all with prebuilt wheels for Windows / Python 3.13.
+This pulls the `gliner` package plus transformers, protobuf and CPU-only PyTorch
+(~200 MB), all with prebuilt wheels for Windows / Python 3.13. `protobuf` is
+listed explicitly: without it, transformers cannot load the model's tokenizer.
 
 Enable it:
 
