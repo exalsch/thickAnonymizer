@@ -34,7 +34,12 @@ class GLiNERConfig:
     labels: list[str] = field(default_factory=lambda: list(DEFAULT_GLINER_LABELS))
     threshold: float = 0.5
     gpu: bool = False
-    max_chunk_chars: int = 4000
+    # GLiNER reads at most config.max_len words (384 for the default model) and
+    # silently drops the rest, so the input is windowed by words, not characters.
+    # 96 words with 32 overlap gave the best recall on long documents in the
+    # 23.11.2026 model benchmark (docs/reviews/2026-11-23-model-research.md).
+    max_chunk_words: int = 96
+    chunk_overlap_words: int = 32
 
 
 @dataclass

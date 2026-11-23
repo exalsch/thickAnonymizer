@@ -90,11 +90,15 @@ def _regex_denylist_entities(text: str, config) -> list[Entity]:
                    text[r.start:r.end]) for r in results]
 
 
-def _detect_once(text: str, config: AnonymizeConfig) -> list[Entity]:
-    if config.gliner is not None and config.gliner.enabled:
+def _gliner_enabled(config: AnonymizeConfig) -> bool:
+    return config.gliner is not None and config.gliner.enabled
+
+
+def _detect_once(text: str, config: AnonymizeConfig, progress=None) -> list[Entity]:
+    if _gliner_enabled(config):
         entities = _regex_denylist_entities(text, config)
         model = gliner_model.load_model(config.gliner)
-        entities += gliner_detect(text, config.gliner, model)
+        entities += gliner_detect(text, config.gliner, model, progress)
     else:
         analyzer = _base_analyzer(config.language)
         ad_hoc = [deny_list_recognizer(config.deny_list)] if config.deny_list else []
@@ -110,7 +114,14 @@ def detect(text: str, config: AnonymizeConfig, progress=None) -> list[Entity]:
 
     progress(done_chunks, total_chunks) is called after each window so a
     caller can report movement while one large file is being scanned.
+
+    The character windows exist for spaCy, whose cost grows faster than the
+    text. GLiNER windows the text by words itself and keeps only spans that a
+    window sees whole, so in GLiNER mode the text is not cut here: a cut would
+    leave the part of a name before the cut as a separate, partial span.
     """
+    if _gliner_enabled(config):
+        return _detect_once(text, config, progress)
     if len(text) <= MAX_ANALYZE_CHARS:
         entities = _detect_once(text, config)
         if progress is not None:

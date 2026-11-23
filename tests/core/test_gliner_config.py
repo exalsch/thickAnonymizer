@@ -6,7 +6,7 @@ def test_gliner_defaults():
     assert c.enabled is False
     assert c.threshold == 0.5
     assert c.gpu is False
-    assert c.max_chunk_chars > 0
+    assert 0 < c.chunk_overlap_words < c.max_chunk_words
     assert c.labels == DEFAULT_GLINER_LABELS
     assert isinstance(c.model_id, str) and c.model_id
 

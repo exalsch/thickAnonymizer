@@ -43,3 +43,27 @@ def test_gliner_branch_does_not_load_spacy(monkeypatch):
 def test_gliner_disabled_uses_spacy_path():
     ents = detect("John at 10.0.0.1", AnonymizeConfig())
     assert {"IP"} <= {e.entity_type for e in ents}
+
+
+def test_gliner_name_across_the_4000_char_boundary_is_not_cut(monkeypatch):
+    # The engine's outer 4.000-character windows exist for spaCy. In GLiNER
+    # mode a window that ends inside a name must not leave a cut-off span
+    # that hides the rest of the name.
+    from tests.detectors.test_gliner_detect import CutAtEdgeStub
+
+    monkeypatch.setattr(gliner_model, "load_model", lambda cfg: CutAtEdgeStub("Eleanor Whitfield"))
+    cfg = AnonymizeConfig(gliner=GLiNERConfig(enabled=True, max_chunk_words=2000,
+                                              chunk_overlap_words=10))
+    for lead in range(3990, 4000):
+        text = "x" * lead + " Eleanor Whitfield signed." + " y" * 50
+        persons = [text[e.start:e.end] for e in detect(text, cfg) if e.entity_type == "PERSON"]
+        assert persons == ["Eleanor Whitfield"], lead
+
+
+def test_gliner_mode_reports_progress_per_window(monkeypatch):
+    monkeypatch.setattr(gliner_model, "load_model", lambda cfg: StubModel())
+    calls = []
+    cfg = AnonymizeConfig(gliner=GLiNERConfig(enabled=True))
+    detect("John Carter wrote. " * 300, cfg, progress=lambda d, t: calls.append((d, t)))
+    assert len(calls) > 1
+    assert calls[-1][0] == calls[-1][1]
