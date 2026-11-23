@@ -9,9 +9,10 @@ def test_xlsx_string_cells_roundtrip(tmp_path):
     ws["A1"] = "John Doe"; ws["A2"] = 42; ws["A3"] = "10.0.0.1"
     wb.save(p)
 
-    assert read_fragments(p) == ["John Doe", "10.0.0.1"]
+    # shared strings first, then the sheet name from workbook.xml
+    assert read_fragments(p) == ["John Doe", "10.0.0.1", "Sheet"]
 
-    write_fragments(p, ["[PERSON_1]", "[IP_1]"])
+    write_fragments(p, ["[PERSON_1]", "[IP_1]", "Sheet"])
     wb2 = load_workbook(p)
     assert wb2.active["A1"].value == "[PERSON_1]"
     assert wb2.active["A2"].value == 42
@@ -27,9 +28,9 @@ def test_xlsx_skips_formula_cells(tmp_path):
     ws["A3"] = "=A1"         # formula → must be excluded
     wb.save(p)
 
-    assert read_fragments(p) == ["John Doe"]
+    assert read_fragments(p) == ["John Doe", "Sheet"]
 
-    write_fragments(p, ["[PERSON_1]"])
+    write_fragments(p, ["[PERSON_1]", "Sheet"])
     wb2 = load_workbook(p)
     assert wb2.active["A1"].value == "[PERSON_1]"
     assert wb2.active["A2"].value == 42

@@ -154,6 +154,32 @@ Hugging Face cache (`~/.cache/huggingface/`). To pre-fetch it before going offli
   is silently anonymized with a weaker detector, but do read the skipped list:
   a run where every file was skipped anonymized nothing at all.
 
+## What is read in Office files
+
+docx, xlsx and pptx files are read part by part, not only their main body:
+
+- **Word:** body, headers, footers, footnotes, endnotes, comments, text boxes, content
+  controls, nested tables, tracked insertions and deletions, and field codes.
+- **Excel:** cell text, sheet names, cell comments, headers and footers, string literals
+  in formulas, defined names and data validation lists, and hyperlink text.
+- **PowerPoint:** slides, group shapes, tables, speaker notes, comments, charts and the
+  footer and date text of masters. The prompt text of master placeholders ("Click to
+  edit Master title style") is skipped.
+- **All three:** chart data, external link targets (`mailto:`, URLs, file paths), the
+  alt text of pictures, and Office files embedded in the file, such as a chart's
+  workbook.
+
+Fields that identify a person by definition are **cleared on every write** instead of
+being detected: the document properties (author, last modified by, title, subject,
+keywords, comments, company, manager), custom properties, and the author names,
+initials and user IDs of comments and tracked changes. These cannot be restored by
+de-anonymize.
+
+Excel forbids `[` and `]` in sheet names, so a token in a sheet name is written as
+`⟦PERSON_1⟧`. Formulas, defined names and charts that refer to the sheet are updated,
+and de-anonymize restores the original name. A file is refused when the anonymized
+sheet name would be longer than the 31 characters Excel allows.
+
 ## Known limitations
 
 - **Residual leaks are REPORTED, not blocked:** in `auto_skip` mode and in non-interactive
@@ -165,8 +191,14 @@ Hugging Face cache (`~/.cache/huggingface/`). To pre-fetch it before going offli
 - **The desktop app holds the extracted text of the whole selection in memory** while
   you preview it. It warns above roughly 200 MB of text; anonymize very large trees in
   batches.
-- **xlsx formula cells are skipped** - PII inside spreadsheet formulas is not anonymized.
-- **.docx/.pptx run formatting:** when a paragraph is modified, inline run-level formatting collapses to the paragraph's first run (paragraph-level formatting is preserved; mid-paragraph bold/italic on edited paragraphs is not).
+- **xlsx formulas:** only the string literals inside a formula are anonymized
+  (`=HYPERLINK("mailto:...","Name")`). Numbers are never anonymized, so a phone number
+  stored as a number stays.
+- **Run formatting:** text outside a replaced value keeps its formatting. A token that
+  replaces a value spread over differently formatted runs takes the formatting of the
+  run where the value started.
+- **Pictures and non-Office embedded objects are not read.** Text inside an image, image
+  metadata (EXIF) and embedded PDFs or OLE binaries stay as they are.
 - **The residual safety-net scan only catches IPv4 and email** (narrower than primary detection).
 - **The mapping file defaults to plaintext and IS the sensitive data** - always use a passphrase (`--passphrase` / the UI field) when the mapping could be exposed.
 - **Deny-list matching is exact (case-insensitive), not fuzzy.**
