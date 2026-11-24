@@ -53,16 +53,13 @@ def settings_path() -> Path:
 def gliner_availability() -> tuple[bool, str]:
     """Can the neural backend actually run in THIS build?
 
-    Probed with find_spec so importing torch (seconds) never happens just to
+    Probed with find_spec so importing onnxruntime never happens just to
     render the settings panel. The reason is written for someone holding an
     exe, not a checkout: telling them to pip install is useless.
     """
-    if importlib.util.find_spec("gliner") is None:
+    if importlib.util.find_spec("onnxruntime") is None or importlib.util.find_spec("tokenizers") is None:
         return False, ("This build ships the regex + spaCy detector only. "
                        "Neural NER (GLiNER) is not included.")
-    if importlib.util.find_spec("torch") is None:
-        return False, ("GLiNER is present but its PyTorch runtime is not "
-                       "bundled in this build.")
     return True, ""
 
 

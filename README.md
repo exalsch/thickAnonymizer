@@ -20,7 +20,7 @@ venv from the hashed lock file instead (needs [uv](https://docs.astral.sh/uv/)):
     uv pip sync -p venv\Scripts\python.exe requirements-lock.txt
     uv pip install -p venv\Scripts\python.exe -e . --no-deps
 
-The lock file includes the spaCy model and the `[dev,gliner]` extras.
+The lock file includes the spaCy model and the `[dev]` extra.
 
 ### Updating dependencies
 
@@ -107,25 +107,19 @@ One exe does **both** roles, dispatching on its arguments (`thickanon/__main__.p
 The spaCy model, the web UI and the splash are bundled inside the exe; no Python install
 is needed on the target machine.
 
-The build excludes the PyTorch/CUDA stack: the `en_core_web_lg` pipeline is a CNN model
-that runs on thinc/numpy, so torch is unused for inference and dropping it takes the exe
-from ~3.1 GB to under 500 MB. The default exe therefore ships the **regex + spaCy**
-detector only, and the app's neural-NER controls are disabled with an explanation rather
-than failing at run time. To bundle the **optional GLiNER** backend, install the
-`[gliner]` extra and remove `"torch"`/`"transformers"` from `_EXCLUDES` in
-`packaging/thickanon.spec` before building - the exe will grow accordingly.
+The exe does not contain PyTorch. spaCy's `en_core_web_lg` runs on thinc/numpy, and
+GLiNER runs as an ONNX model on onnxruntime, so the default exe offers both detectors.
+The GLiNER model itself is not bundled; it is downloaded on first use (see below).
 
-## Neural NER detection (GLiNER, optional)
+## Neural NER detection (GLiNER)
 
-Install the extra:
+GLiNER is a neural model that finds names, organizations, addresses, usernames and
+hostnames that the regex + spaCy detector misses, in English and German among other
+languages. In the 23.11.2026 benchmark on IT text (tickets, logs, mails) it found
+93,9 % of the personal data, against 62,2 % for regex + spaCy, but it is about 28 times
+slower (`docs/reviews/2026-11-23-model-research.md`).
 
-    pip install -e ".[dev,gliner]"
-    # or just the runtime:
-    pip install gliner
-
-This pulls the `gliner` package plus transformers, protobuf and CPU-only PyTorch
-(~200 MB), all with prebuilt wheels for Windows / Python 3.13. `protobuf` is
-listed explicitly: without it, transformers cannot load the model's tokenizer.
+It needs no extra install: onnxruntime and tokenizers are regular dependencies.
 
 Enable it:
 
@@ -133,19 +127,27 @@ Enable it:
   and `--gliner-threshold 0.5`).
 - **Desktop app:** toggle **Use neural NER (GLiNER)** in the settings panel.
 
-On first run the default GLiNER model is downloaded automatically into the
-Hugging Face cache (`~/.cache/huggingface/`). To pre-fetch it before going offline:
+The model is `onnx-community/gliner_multi_pii-v1` (the ONNX export of
+`urchade/gliner_multi_pii-v1`, Apache-2.0, 1,16 GB), pinned to one revision. On first
+use it is downloaded into the Hugging Face cache (`~/.cache/huggingface/`); after that
+it is loaded from the cache without touching the network. To pre-fetch it before going
+offline:
 
     thickanon download-model
 
-(Pass `--gliner-model <dir>` to load a model from a specific local directory instead.)
+`--gliner-model <dir>` loads a model from a local folder instead. The folder must hold
+an ONNX export: `gliner_config.json`, `tokenizer.json` and `onnx/model.onnx`. A folder
+with only a PyTorch checkpoint (`pytorch_model.bin`) is refused with a clear message.
 
 **Important notes:**
 
 - The model is loaded **once per process**. Pass a folder to `anonymize` instead
   of looping the exe per file - restarting per file re-pays the model load cost.
-- **GPU acceleration** (`--gliner-gpu`) requires a CUDA-enabled PyTorch install;
-  the default torch wheel is CPU-only.
+- The text is read in windows of 96 words, because the model reads at most 384 words
+  per call and silently drops the rest.
+- **GPU acceleration** (`--gliner-gpu`) needs a GPU build of onnxruntime
+  (`onnxruntime-gpu` for NVIDIA CUDA or `onnxruntime-directml`). With only the CPU
+  runtime installed, GPU mode stops with a clear message.
 - GLiNER's real per-entity confidence scores feed the normal review bands
   (below `low_threshold` → ignored; above `high_threshold` → auto-anonymized;
   in between → gray band / human review).
@@ -153,6 +155,8 @@ Hugging Face cache (`~/.cache/huggingface/`). To pre-fetch it before going offli
   scan and is recorded as skipped, with the loader's error as the reason. Nothing
   is silently anonymized with a weaker detector, but do read the skipped list:
   a run where every file was skipped anonymized nothing at all.
+- GLiNER sometimes marks product names as hostnames (for example "M3"). Review the
+  gray band before applying.
 
 ## What is read in Office files
 

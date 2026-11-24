@@ -1,22 +1,26 @@
 import os
 import pytest
-from thickanon.core.types import AnonymizeConfig, DEFAULT_GLINER_MODEL_ID, GLiNERConfig
+from thickanon.core.types import (
+    AnonymizeConfig, DEFAULT_GLINER_MODEL_ID, DEFAULT_GLINER_ONNX_FILE, DEFAULT_GLINER_REVISION,
+    GLiNERConfig,
+)
 from thickanon.detectors.engine import detect
 
 
 def _model_is_cached() -> bool:
-    """True when gliner is installed and the default model is in the local HF cache.
+    """True when onnxruntime is installed and the default model is in the local HF cache.
 
     A dependency update once broke model loading (a transitive dependency
     disappeared) while every stub-based test stayed green. Running the real
     model whenever it is already on disk catches that without a download.
     """
     try:
-        import gliner  # noqa: F401
+        import onnxruntime  # noqa: F401
         from huggingface_hub import try_to_load_from_cache
     except ImportError:
         return False
-    found = try_to_load_from_cache(DEFAULT_GLINER_MODEL_ID, "gliner_config.json")
+    found = try_to_load_from_cache(DEFAULT_GLINER_MODEL_ID, DEFAULT_GLINER_ONNX_FILE,
+                                   revision=DEFAULT_GLINER_REVISION)
     return isinstance(found, str)
 
 

@@ -3,6 +3,7 @@ _TYPE_NORMALIZE = {
     "IP_ADDRESS": "IP",
     "IBAN_CODE": "IBAN",
     "PHONE_NUMBER": "PHONE",
+    "HOSTNAME": "HOST",
     "DENY": "TERM",
 }
 

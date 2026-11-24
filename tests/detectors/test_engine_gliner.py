@@ -67,3 +67,8 @@ def test_gliner_mode_reports_progress_per_window(monkeypatch):
     detect("John Carter wrote. " * 300, cfg, progress=lambda d, t: calls.append((d, t)))
     assert len(calls) > 1
     assert calls[-1][0] == calls[-1][1]
+
+
+def test_hostname_label_maps_to_the_host_token():
+    from thickanon.detectors.normalize import normalize_type
+    assert normalize_type("hostname") == "HOST"

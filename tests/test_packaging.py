@@ -124,3 +124,38 @@ def test_build_script_smoke_tests_the_staged_exe():
     staged_assign = script.index("$staged = ")
     smoke = script.index("Smoke-testing the exe")
     assert staged_assign < smoke
+
+
+def test_onnx_runtime_is_collected_outside_any_try():
+    # GLiNER runs on onnxruntime + tokenizers. A collect_all inside a
+    # try/except once failed on a missing package and silently dropped the
+    # runtime from the exe, so these must be collected unconditionally.
+    tree = _spec_ast()
+    guarded = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Try):
+            for inner in ast.walk(node):
+                if isinstance(inner, ast.Constant) and isinstance(inner.value, str):
+                    guarded.add(inner.value)
+    collected = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and ast.unparse(node.func) == "collect_all":
+            for arg in node.args:
+                if isinstance(arg, ast.Constant):
+                    collected.add(arg.value)
+        if isinstance(node, ast.For) and isinstance(node.iter, (ast.List, ast.Tuple)):
+            if any(isinstance(n, ast.Call) and ast.unparse(n.func) == "collect_all" for n in ast.walk(node)):
+                collected |= {e.value for e in node.iter.elts if isinstance(e, ast.Constant)}
+    for pkg in ("onnxruntime", "tokenizers"):
+        assert pkg in collected, f"{pkg} is not collected"
+        assert pkg not in guarded, f"{pkg} is collected inside a try block"
+
+
+def test_the_torch_based_gliner_package_is_excluded():
+    excludes = None
+    for node in ast.walk(_spec_ast()):
+        if isinstance(node, ast.Assign) and any(
+            isinstance(t, ast.Name) and t.id == "_EXCLUDES" for t in node.targets
+        ):
+            excludes = {ast.literal_eval(e) for e in node.value.elts}
+    assert "gliner" in excludes

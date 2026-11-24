@@ -20,16 +20,12 @@ for pkg in ["en_core_web_lg", "presidio_analyzer", "presidio_anonymizer"]:
     d, b, h = collect_all(pkg)
     datas += d; binaries += b; hiddenimports += h
 
-# Optional GLiNER backend: bundle the gliner package (and onnxruntime, which
-# gliner>=0.2.30 no longer pulls in itself) only if installed. The default build excludes torch/transformers
-# (see _EXCLUDES) for a slim CPU-only exe; to ship GLiNER, install the [gliner] extra
-# AND remove "torch"/"transformers" from _EXCLUDES before building.
-try:
-    for _pkg in ("gliner", "onnxruntime"):
-        _d, _b, _h = collect_all(_pkg)
-        datas += _d; binaries += _b; hiddenimports += _h
-except Exception:
-    pass
+# GLiNER runs as an ONNX model on onnxruntime + tokenizers (detectors/gliner_onnx.py),
+# so neural NER ships in the default exe without PyTorch. The model itself
+# (1,16 GB) is downloaded into the Hugging Face cache on first use.
+for _pkg in ("onnxruntime", "tokenizers"):
+    _d, _b, _h = collect_all(_pkg)
+    datas += _d; binaries += _b; hiddenimports += _h
 
 # ensure all of our own modules are bundled (the entry imports them lazily)
 hiddenimports += collect_submodules("thickanon")
@@ -43,13 +39,12 @@ datas += [
     (os.path.join(_WEB, "app.js"), "thickanon/ui/web"),
 ]
 
-# torch is present in the dev env (so thinc auto-registers it), but the
-# en_core_web_lg CNN pipeline runs on thinc/numpy and does not need it for
-# inference. Excluding the torch + CUDA stack drops ~2GB; thinc falls back
-# cleanly when torch is unimportable.
+# The torch-based gliner package and its PyTorch/CUDA stack are no longer
+# dependencies. They stay excluded so a dev venv that still has them cannot
+# pull 2 GB into the exe: presidio imports gliner opportunistically.
 _EXCLUDES = [
     "torch", "torchvision", "torchaudio", "torchgen", "functorch",
-    "nvidia", "triton", "transformers",
+    "nvidia", "triton", "transformers", "gliner",
 ]
 
 a = Analysis([os.path.join(SRC, "thickanon/__main__.py")], pathex=[SRC], datas=datas,
