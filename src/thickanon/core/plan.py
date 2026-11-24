@@ -14,7 +14,7 @@ from thickanon.core.decide import partition
 from thickanon.core.report import BatchReport
 from thickanon.core.residual import residual_scan
 from thickanon.core.types import AnonymizeConfig, Entity
-from thickanon.detectors.engine import detect
+from thickanon.detectors.engine import detect_many
 from thickanon.io.registry import UnsupportedFileType, get_handler
 
 CONTEXT_RADIUS = 60
@@ -152,6 +152,9 @@ class ScanResult:
         return out
 
 
+_PROGRESS_EVERY = 32
+
+
 def scan_paths(paths, root, config: AnonymizeConfig, progress=None, cancel=None) -> ScanResult:
     """Read and detect across paths without modifying anything on disk."""
     paths = [Path(p) for p in paths]
@@ -175,17 +178,20 @@ def scan_paths(paths, root, config: AnonymizeConfig, progress=None, cancel=None)
             fragments = handler.read_fragments(path)
             file_index = len(result.files)
             candidates: list[Candidate] = []
-            for fragment_index, fragment in enumerate(fragments):
-                result.text_bytes += len(fragment.encode("utf-8"))
-                def chunk_progress(done_chunks, total_chunks, _done=done, _index=fragment_index):
-                    # Only worth reporting when a fragment is large enough to be
-                    # split; otherwise this fires once per fragment and adds noise.
-                    if progress is None or total_chunks <= 1:
-                        return
-                    fraction = (_index + done_chunks / total_chunks) / max(1, len(fragments))
-                    progress(round(_done - 1 + fraction, 3), total, str(path), "scan")
+            def window_progress(done_windows, total_windows, _done=done, _path=str(path)):
+                # A file with one window finishes at once; a large one reports
+                # every _PROGRESS_EVERY windows so the UI sees movement without
+                # being flooded by a spreadsheet's thousands of cells.
+                if progress is None or total_windows <= 1:
+                    return
+                if done_windows != total_windows and done_windows % _PROGRESS_EVERY:
+                    return
+                progress(round(_done - 1 + done_windows / total_windows, 3), total, _path, "scan")
 
-                apply_now, flagged = partition(detect(fragment, config, progress=chunk_progress), config)
+            detected = detect_many(fragments, config, progress=window_progress)
+            for fragment_index, (fragment, entities) in enumerate(zip(fragments, detected)):
+                result.text_bytes += len(fragment.encode("utf-8"))
+                apply_now, flagged = partition(entities, config)
                 for band, group in (("auto", apply_now), ("review", flagged)):
                     for entity in group:
                         context, cstart, cend = extract_context(fragment, entity)

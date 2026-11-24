@@ -100,13 +100,87 @@ def _detect_once(text: str, config: AnonymizeConfig, progress=None) -> list[Enti
         model = gliner_model.load_model(config.gliner)
         entities += gliner_detect(text, config.gliner, model, progress)
     else:
-        analyzer = _base_analyzer(config.language)
-        ad_hoc = [deny_list_recognizer(config.deny_list)] if config.deny_list else []
-        raw = analyzer.analyze(text=text, language=config.language, ad_hoc_recognizers=ad_hoc)
-        entities = [Entity(r.start, r.end, normalize_type(r.entity_type), r.score,
-                           text[r.start:r.end]) for r in raw]
-    entities = [e for e in entities if e.score >= config.low_threshold]
+        entities = _analyze_spacy(text, config)
+    return _keep(entities, config)
+
+
+def _keep(entities, config) -> list[Entity]:
+    return _resolve_overlaps([e for e in entities if e.score >= config.low_threshold])
+
+
+def _ad_hoc(config):
+    return [deny_list_recognizer(config.deny_list)] if config.deny_list else []
+
+
+def _analyze_spacy(text, config, nlp_artifacts=None, ad_hoc=None) -> list[Entity]:
+    analyzer = _base_analyzer(config.language)
+    raw = analyzer.analyze(text=text, language=config.language,
+                           ad_hoc_recognizers=_ad_hoc(config) if ad_hoc is None else ad_hoc,
+                           nlp_artifacts=nlp_artifacts)
+    return [Entity(r.start, r.end, normalize_type(r.entity_type), r.score,
+                   text[r.start:r.end]) for r in raw]
+
+
+def _windows(text):
+    """The (base, window) pairs detect() analyses a text in."""
+    if len(text) <= MAX_ANALYZE_CHARS:
+        return [(0, text)]
+    return iter_chunks(text, MAX_ANALYZE_CHARS, _CHUNK_OVERLAP)
+
+
+def _merge_windows(per_window) -> list[Entity]:
+    """Combine the entities of one text's windows: [(base, entities), ...]."""
+    if len(per_window) == 1 and per_window[0][0] == 0:
+        return per_window[0][1]
+    seen, entities = set(), []
+    for base, found in per_window:
+        for entity in found:
+            # The windows overlap, so the same span can be found twice.
+            key = (entity.entity_type, base + entity.start, base + entity.end)
+            if key in seen:
+                continue
+            seen.add(key)
+            entities.append(
+                Entity(base + entity.start, base + entity.end,
+                       entity.entity_type, entity.score, entity.text)
+            )
     return _resolve_overlaps(entities)
+
+
+# spaCy's fixed cost per call dominates for short texts such as spreadsheet
+# cells. 128 texts per batch measured best (docs/reviews/2026-11-23-performance-review.md).
+_BATCH_SIZE = 128
+
+
+def detect_many(texts, config: AnonymizeConfig, progress=None) -> list[list[Entity]]:
+    """detect() for each text, with all windows of all texts in one spaCy batch.
+
+    Returns exactly what [detect(t, config) for t in texts] returns. The
+    recognizers and the context enhancer get the same spaCy output as in a
+    single call; only the number of calls into spaCy changes.
+    progress(done_windows, total_windows) is called as the windows complete.
+    """
+    texts = list(texts)
+    if _gliner_enabled(config):
+        results = []
+        for index, text in enumerate(texts, start=1):
+            results.append(detect(text, config))
+            if progress is not None:
+                progress(index, len(texts))
+        return results
+
+    jobs = [(i, base, window) for i, text in enumerate(texts) for base, window in _windows(text)]
+    analyzer = _base_analyzer(config.language)
+    ad_hoc = _ad_hoc(config)
+    artifacts = analyzer.nlp_engine.process_batch(
+        [window for _, _, window in jobs], config.language, batch_size=_BATCH_SIZE)
+    per_text = [[] for _ in texts]
+    for done, ((i, base, _), (window, nlp_artifacts)) in enumerate(zip(jobs, artifacts), start=1):
+        found = _keep(_analyze_spacy(window, config, nlp_artifacts, ad_hoc), config)
+        per_text[i].append((base, found))
+        if progress is not None:
+            progress(done, len(jobs))
+    return [_merge_windows(windows) for windows in per_text]
 
 
 def detect(text: str, config: AnonymizeConfig, progress=None) -> list[Entity]:
@@ -122,25 +196,10 @@ def detect(text: str, config: AnonymizeConfig, progress=None) -> list[Entity]:
     """
     if _gliner_enabled(config):
         return _detect_once(text, config, progress)
-    if len(text) <= MAX_ANALYZE_CHARS:
-        entities = _detect_once(text, config)
+    windows = _windows(text)
+    per_window = []
+    for index, (base, window) in enumerate(windows, start=1):
+        per_window.append((base, _detect_once(window, config)))
         if progress is not None:
-            progress(1, 1)
-        return entities
-
-    chunks = iter_chunks(text, MAX_ANALYZE_CHARS, _CHUNK_OVERLAP)
-    seen, entities = set(), []
-    for index, (base, chunk) in enumerate(chunks, start=1):
-        for entity in _detect_once(chunk, config):
-            # The windows overlap, so the same span can be found twice.
-            key = (entity.entity_type, base + entity.start, base + entity.end)
-            if key in seen:
-                continue
-            seen.add(key)
-            entities.append(
-                Entity(base + entity.start, base + entity.end,
-                       entity.entity_type, entity.score, entity.text)
-            )
-        if progress is not None:
-            progress(index, len(chunks))
-    return _resolve_overlaps(entities)
+            progress(index, len(windows))
+    return _merge_windows(per_window)
