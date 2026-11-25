@@ -37,7 +37,7 @@ def main(argv=None) -> int:
     _hide_console_on_windows()
 
     # Importing the UI pulls in webview and the detection stack, which is the
-    # slowest part of start-up after the unpack. Say so before it begins.
+    # slowest part of start-up. Say so before it begins.
     try:
         import pyi_splash
 

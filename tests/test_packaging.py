@@ -60,19 +60,40 @@ def _find_call(tree, func_name):
 
 def test_exe_call_really_receives_the_splash():
     # The substring tests pass if "Splash(" appears anywhere, a comment
-    # included. This checks the object is genuinely handed to EXE().
+    # included. This checks the object is genuinely handed to EXE() and its
+    # binaries to COLLECT(), as in PyInstaller's own one-dir template.
     exe = _find_call(_spec_ast(), "EXE")
     assert exe is not None, "the spec has no EXE(...) call"
-    args = [ast.unparse(a) for a in exe.args]
-    assert "splash" in args, args
-    assert "splash.binaries" in args, args
+    assert "splash" in [ast.unparse(a) for a in exe.args]
+    coll = _find_call(_spec_ast(), "COLLECT")
+    assert coll is not None, "the spec has no COLLECT(...) call"
+    assert "splash.binaries" in [ast.unparse(a) for a in coll.args]
 
 
-def test_exe_argument_order_matches_pyinstallers_template():
-    # normalize_toc() dedups first-wins, so Analysis' binaries must come first.
+def test_build_is_one_dir_so_nothing_is_unpacked_at_each_start():
+    # A one-file exe unpacked about 740 MB into %TEMP% on every launch, which
+    # cost 12 to 19 seconds before any of our code ran.
     exe = _find_call(_spec_ast(), "EXE")
-    args = [ast.unparse(a) for a in exe.args]
-    assert args.index("a.binaries") < args.index("splash"), args
+    keywords = {k.arg: k.value for k in exe.keywords}
+    assert "exclude_binaries" in keywords and ast.literal_eval(keywords["exclude_binaries"]) is True
+    exe_args = [ast.unparse(a) for a in exe.args]
+    assert "a.binaries" not in exe_args and "a.datas" not in exe_args
+
+
+def test_collect_argument_order_matches_pyinstallers_template():
+    # normalize_toc() dedups first-wins, so Analysis' binaries must come first.
+    coll = _find_call(_spec_ast(), "COLLECT")
+    args = [ast.unparse(a) for a in coll.args]
+    assert args[:3] == ["exe", "a.binaries", "a.datas"], args
+    assert args.index("a.binaries") < args.index("splash.binaries"), args
+
+
+def test_source_files_are_dropped_from_the_bundle():
+    # collect_all() adds spaCy's .pyx/.pxd/.cpp sources as data, about 70 MB
+    # that nothing reads at run time.
+    spec = SPEC.read_text(encoding="utf-8")
+    for ext in (".pyx", ".pxd", ".cpp"):
+        assert f'"{ext}"' in spec, f"{ext} sources are not filtered out"
 
 
 def test_excludes_really_lists_torch_and_transformers():
@@ -106,14 +127,14 @@ def test_splash_does_not_float_above_every_other_window():
 
 
 def test_build_script_does_not_delete_dist_up_front():
-    # Removing dist at the start leaves the user with no exe for the ten
+    # Removing dist at the start leaves the user with no app for the ten
     # minutes the build takes, and nothing at all if it fails.
     script = (ROOT / "packaging" / "build.ps1").read_text(encoding="utf-8")
-    assert "--distpath" in script, "the build must stage the exe rather than write straight to dist"
+    assert "--distpath" in script, "the build must stage the app rather than write straight to dist"
     clean = script.index("Cleaning previous build")
-    promote = script.index("Promoting the verified exe")
+    promote = script.index("Promoting the verified build")
     smoke = script.index("Smoke-testing the exe")
-    assert smoke < promote, "the exe must be verified before it replaces the previous one"
+    assert smoke < promote, "the build must be verified before it replaces the previous one"
     assert clean < smoke
 
 
@@ -124,6 +145,15 @@ def test_build_script_smoke_tests_the_staged_exe():
     staged_assign = script.index("$staged = ")
     smoke = script.index("Smoke-testing the exe")
     assert staged_assign < smoke
+
+
+def test_build_script_keeps_the_previous_app_until_the_new_one_is_in_place():
+    # The one-dir app is a folder. It is moved aside, not deleted, so a failed
+    # move can put it back.
+    script = (ROOT / "packaging" / "build.ps1").read_text(encoding="utf-8")
+    assert "$previous" in script
+    promote = script.index("Promoting the verified build")
+    assert script.index("Rename-Item", promote) < script.index("Remove-Item", script.index("Move-Item", promote))
 
 
 def test_onnx_runtime_is_collected_outside_any_try():
@@ -159,3 +189,23 @@ def test_the_torch_based_gliner_package_is_excluded():
         ):
             excludes = {ast.literal_eval(e) for e in node.value.elts}
     assert "gliner" in excludes
+
+
+def test_spec_takes_the_vc_runtime_from_system32():
+    # PyInstaller finds DLLs through PATH. A JDK on PATH once put a 2017
+    # msvcp140.dll (14.16) into the app and onnxruntime crashed with an access
+    # violation on the first GLiNER run, while --help still worked.
+    spec = SPEC.read_text(encoding="utf-8")
+    assert "System32" in spec
+    for name in ("msvcp140.dll", "vcruntime140.dll"):
+        assert f'"{name}"' in spec
+    assert "a.binaries = _pin_vc_runtime(a.binaries)" in spec
+    # it must run before the splash and COLLECT read a.binaries
+    assert spec.index("a.binaries = _pin_vc_runtime") < spec.index("splash = Splash(")
+
+
+def test_build_script_refuses_an_old_vc_runtime():
+    script = (ROOT / "packaging" / "build.ps1").read_text(encoding="utf-8")
+    assert "msvcp140.dll" in script and "14.40" in script
+    # the check must come before the build is promoted
+    assert script.index("14.40") < script.index("Promoting the verified build")

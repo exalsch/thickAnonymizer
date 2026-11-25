@@ -50,7 +50,7 @@ version in `packaging/spacy-model.in`.
 
     python -m thickanon.ui.app
 
-Or double-click `thickAnonymizer.exe`.
+Or double-click `thickAnonymizer\thickAnonymizer.exe` in the built app folder.
 
 The app works in three steps.
 
@@ -82,30 +82,37 @@ The desktop window needs the **Microsoft Edge WebView2 Runtime**, which ships wi
 Windows 11 and current Windows 10. If it is missing, the app says so and links to the
 download instead of opening a broken window. The command-line mode does not need it.
 
-## Build a Windows .exe (single hybrid binary)
+## Build the Windows app (one folder, one hybrid exe)
 
     .\packaging\build.ps1
-    # dist/thickAnonymizer.exe  (488 MB)
+    # dist\thickAnonymizer\thickAnonymizer.exe  plus its _internal folder
+    # dist\thickAnonymizer.zip                   the same folder, zipped for sharing
 
 The script cleans the previous build, runs PyInstaller, smoke-tests the exe and refuses
-to report success if it cannot run, and prints the size and SHA256 of the result so a
-shared copy can be verified. `pyinstaller packaging/thickanon.spec` still works if you
-prefer to drive it yourself.
+to report success if it cannot run. Only then does it replace the previous app: the old
+folder is moved aside and deleted once the new one is in place. It prints the folder
+size and the zip's size and SHA256 so a shared copy can be verified. `-OutDir <folder>`
+builds somewhere other than `dist`, `-NoZip` skips the zip.
+`pyinstaller packaging/thickanon.spec` still works if you prefer to drive it yourself.
+
+The app is a folder, not a single file. A one-file exe unpacked about 740 MB into
+`%TEMP%` on every launch, which cost 12 to 19 seconds before the app could start. To
+share it, send the zip; the receiver unzips it anywhere and runs
+`thickAnonymizer\thickAnonymizer.exe`. Keep the exe next to its `_internal` folder.
 
 One exe does **both** roles, dispatching on its arguments (`thickanon/__main__.py`):
 
-- **Double-click** (no arguments) -> a splash appears while the one-file archive
-  unpacks, then the desktop **GUI**. The splash reports progress while the app
-  unpacks and starts, so a slow first launch does not look like a hang. The exe
-  is a console binary, so a console window flashes briefly and is then hidden;
-  only the app window remains.
+- **Double-click** (no arguments) -> a splash appears while the detection engine
+  loads, then the desktop **GUI**. The splash reports progress, so a slow first
+  launch does not look like a hang. The exe is a console binary, so a console window
+  flashes briefly and is then hidden; only the app window remains.
 - **From a terminal** with arguments -> the **CLI**, e.g.
   `thickAnonymizer.exe anon C:\data --root C:\data --mapping C:\keys\map.json --mode auto_redact`.
   Because it is a console-subsystem exe, the shell waits for it, stdout/stderr pipe and
   redirect normally, and the exit code propagates.
 
-The spaCy model, the web UI and the splash are bundled inside the exe; no Python install
-is needed on the target machine.
+The spaCy model, the web UI and the splash are bundled; no Python install is needed on
+the target machine.
 
 The exe does not contain PyTorch. spaCy's `en_core_web_lg` runs on thinc/numpy, and
 GLiNER runs as an ONNX model on onnxruntime, so the default exe offers both detectors.

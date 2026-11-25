@@ -79,9 +79,8 @@ def close_splash() -> None:
 def splash_text(message: str) -> None:
     """Update the PyInstaller splash screen's status line.
 
-    No-op outside a bundled exe. During the one-file unpack the bootloader
-    overwrites this line with the name of each file it extracts, so these
-    messages are what the user sees from the end of the unpack onwards.
+    No-op outside a bundled exe. The bootloader shows the spec's default text
+    until the first of these messages arrives.
     """
     try:
         import pyi_splash  # provided only inside a PyInstaller bundle
